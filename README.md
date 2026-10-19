@@ -46,7 +46,9 @@ macOS shows a generic icon for Now Playing. MusicBar puts the **real cover art**
 
 ## Install
 
-No Xcode needed, the Command Line Tools are enough:
+**Easiest:** download `MusicBar-1.0.zip` from [Releases](https://github.com/Daniil15DDD/MusicBar/releases/latest), unzip, and move `MusicBar.app` to Applications. It is not notarized, so on first launch right-click → **Open** (or run `xattr -cr /Applications/MusicBar.app`).
+
+**Or build it yourself.** No Xcode needed, the Command Line Tools are enough:
 
 ```bash
 git clone https://github.com/Daniil15DDD/MusicBar.git
