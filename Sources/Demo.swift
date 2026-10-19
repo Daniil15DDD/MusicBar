@@ -1,15 +1,15 @@
 import SwiftUI
 import AppKit
 
-/// `MusicBar --render <dir>` draws the real views with demo data to PNGs (used for the README images).
+/// `MusicBar --render <dir> [--art <image>]` draws the real views with demo data to PNGs (used for the README images).
 @MainActor
 enum Demo {
-    static func run(dir: URL) {
+    static func run(dir: URL, artPath: String?) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let art = render(cover, scale: 1)!
+        let art = artPath.flatMap { NSImage(contentsOfFile: $0) } ?? render(cover, scale: 1)!
         func np(_ playing: Bool) -> NowPlaying {
-            NowPlaying(player: .music, title: "Midnight Drive", artist: "Neon Waves", album: "Afterglow",
-                       duration: 214, position: 84, isPlaying: playing, shuffle: true, repeatMode: "all", favorited: true)
+            NowPlaying(player: .music, title: "One More Hour", artist: "Tame Impala", album: "The Slow Rush",
+                       duration: 433, position: 84, isPlaying: playing, shuffle: true, repeatMode: "all", favorited: true)
         }
         let playing = MediaController(demo: np(true), artwork: art)
         let paused = MediaController(demo: np(false), artwork: art)
@@ -60,7 +60,7 @@ enum Demo {
         save(render(hero), dir.appendingPathComponent("hero.png"))
     }
 
-    /// Generated cover so no copyrighted artwork ships in the repo.
+    /// Generated fallback cover, used when no `--art` image is passed.
     static var cover: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.98, green: 0.45, blue: 0.3), Color(red: 0.35, green: 0.1, blue: 0.55)],

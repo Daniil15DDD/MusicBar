@@ -69,7 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         if let i = CommandLine.arguments.firstIndex(of: "--render"), i + 1 < CommandLine.arguments.count {
-            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1])) }
+            let art = CommandLine.arguments.firstIndex(of: "--art").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil }
+            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1]), artPath: art) }
             exit(0)
         }
         item = NSStatusBar.system.statusItem(withLength: 46)
