@@ -1,0 +1,17 @@
+name: MusicBar
+options:
+  deploymentTarget: { macOS: "14.2" }
+targets:
+  MusicBar:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    settings:
+      base:
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/MusicBar.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.MusicBar
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_VERSION: "5.0"
+        ARCHS: "arm64 x86_64"
+        ONLY_ACTIVE_ARCH: NO
