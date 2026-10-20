@@ -18,9 +18,9 @@
 macOS shows a plain icon for Now Playing. MusicBar shows the **real cover** instead, like the iPhone's Dynamic Island. Click it for a small player.
 
 <div align="center">
-<img src="assets/menubar-playing.png" height="64" alt="Playing">
-&nbsp;&nbsp;
-<img src="assets/menubar-paused.png" height="64" alt="Paused">
+<img src="assets/menubar-playing.png" width="560" alt="Playing">
+<br>
+<img src="assets/menubar-paused.png" width="560" alt="Paused">
 <br><sub>Playing · Paused</sub>
 <br><br>
 <img src="assets/popover.png" width="360" alt="The player popover">

@@ -27,32 +27,52 @@ enum Demo {
                 .padding(24)
         }
 
-        save(render(bar(playing).padding(14).background(Color(white: 0.08)).environment(\.colorScheme, .dark)), dir.appendingPathComponent("menubar-playing.png"))
-        save(render(bar(paused).padding(14).background(Color(white: 0.08)).environment(\.colorScheme, .dark)), dir.appendingPathComponent("menubar-paused.png"))
+        func strip(_ m: MediaController, width: CGFloat, menus: Bool) -> some View {
+            HStack(spacing: 14) {
+                if menus {
+                    Text("Music").fontWeight(.bold)
+                    ForEach(["File", "Edit", "View", "Window"], id: \.self) { Text($0) }
+                }
+                Spacer(minLength: 0)
+                bar(m)
+                Image(systemName: "wifi")
+                Image(systemName: "battery.100")
+                Text("Mon 22:49")
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 14)
+            .frame(width: width, height: 30)
+            .background(Color.black.opacity(0.35))
+        }
+
+        save(render(strip(playing, width: 560, menus: false).background(Color(white: 0.08)).environment(\.colorScheme, .dark)), dir.appendingPathComponent("menubar-playing.png"))
+        save(render(strip(paused, width: 560, menus: false).background(Color(white: 0.08)).environment(\.colorScheme, .dark)), dir.appendingPathComponent("menubar-paused.png"))
         save(render(popover(playing).environment(\.colorScheme, .dark)), dir.appendingPathComponent("popover.png"))
 
-        let hero = ZStack {
+        let hero = ZStack(alignment: .top) {
             LinearGradient(colors: [Color(red: 0.18, green: 0.08, blue: 0.35), Color(red: 0.03, green: 0.03, blue: 0.08)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
-            HStack(spacing: 40) {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("MusicBar").font(.system(size: 76, weight: .bold, design: .rounded))
-                    Text("Your album cover and a live waveform, right in the macOS menu bar.")
-                        .font(.system(size: 28)).foregroundStyle(.white.opacity(0.8))
-                    HStack(spacing: 10) {
-                        ForEach(["Apple Music", "Spotify", "macOS 14.2+", "Free & open source"], id: \.self) { t in
-                            Text(t).font(.system(size: 17, weight: .medium)).padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(Capsule().fill(.white.opacity(0.14)))
+            VStack(spacing: 0) {
+                strip(playing, width: 1280, menus: true)
+                HStack(spacing: 40) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("MusicBar").font(.system(size: 76, weight: .bold, design: .rounded))
+                        Text("Your album cover and a live waveform, right in the macOS menu bar.")
+                            .font(.system(size: 28)).foregroundStyle(.white.opacity(0.8))
+                        HStack(spacing: 10) {
+                            ForEach(["Apple Music", "Spotify", "macOS 14.2+", "Free & open source"], id: \.self) { t in
+                                Text(t).font(.system(size: 17, weight: .medium)).padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(Capsule().fill(.white.opacity(0.14)))
+                            }
                         }
                     }
+                    .frame(width: 600, alignment: .leading)
+                    Spacer(minLength: 0)
+                    popover(playing).padding(.trailing, -10)
                 }
-                .frame(width: 600, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 6) {
-                    bar(playing).padding(.trailing, 60)
-                    popover(playing)
-                }
+                .padding(.horizontal, 60)
+                .frame(maxHeight: .infinity)
             }
-            .padding(.horizontal, 60)
         }
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
