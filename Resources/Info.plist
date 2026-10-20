@@ -5,6 +5,7 @@
 	<key>CFBundleName</key><string>MusicBar</string>
 	<key>CFBundleDisplayName</key><string>MusicBar</string>
 	<key>CFBundleIdentifier</key><string>com.example.MusicBar</string>
+	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundleExecutable</key><string>MusicBar</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>1.0</string>

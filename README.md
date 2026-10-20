@@ -2,6 +2,8 @@
 
 <img src="assets/hero.png" alt="MusicBar: album cover and waveform in the macOS menu bar" width="100%">
 
+<img src="assets/icon.png" width="128" alt="MusicBar icon">
+
 # MusicBar
 
 **Your album cover in the macOS menu bar, with a waveform next to it.**

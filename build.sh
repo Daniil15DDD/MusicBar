@@ -9,6 +9,7 @@ for arch in arm64 x86_64; do
 done
 lipo -create build/MusicBar-arm64 build/MusicBar-x86_64 -output $APP/Contents/MacOS/MusicBar
 rm build/MusicBar-arm64 build/MusicBar-x86_64
+mkdir -p $APP/Contents/Resources && cp Resources/AppIcon.icns $APP/Contents/Resources/
 cp Resources/Info.plist $APP/Contents/Info.plist
 codesign --force --sign - --entitlements Resources/MusicBar.entitlements $APP
 echo "Built $APP"
