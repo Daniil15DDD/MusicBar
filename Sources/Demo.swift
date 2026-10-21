@@ -58,7 +58,8 @@ enum Demo {
             return renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, motionStill: still)
         }()
         let hero = ZStack(alignment: .top) {
-            LinearGradient(colors: [Color(red: 0.18, green: 0.08, blue: 0.35), Color(red: 0.03, green: 0.03, blue: 0.08)],
+            LinearGradient(colors: [Color(white: 0.17), Color(white: 0.02)],   // neutral black: matches the black and white logo
+                           
                            startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(spacing: 0) {
                 strip(playing, width: 1280, menus: true)
@@ -109,7 +110,8 @@ enum Demo {
             .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.14)))
         }
         let perf = ZStack {
-            LinearGradient(colors: [Color(red: 0.18, green: 0.08, blue: 0.35), Color(red: 0.03, green: 0.03, blue: 0.08)],
+            LinearGradient(colors: [Color(white: 0.17), Color(white: 0.02)],   // neutral black: matches the black and white logo
+                           
                            startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(spacing: 44) {
                 Text("Light on your Mac").font(.system(size: 64, weight: .bold, design: .rounded))
