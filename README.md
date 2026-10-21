@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assets/hero.png" alt="MusicBar: album cover and waveform in the macOS menu bar" width="100%">
+<img src="assets/hero.png" alt="ORBT: album cover and waveform in the macOS menu bar" width="100%">
 
-<img src="assets/icon.png" width="128" alt="MusicBar icon">
+<img src="assets/icon.png" width="128" alt="ORBT icon">
 
-# MusicBar
+# ORBT
 
 **Your album cover in the macOS menu bar, with a waveform next to it.**
 
@@ -17,7 +17,7 @@
 
 ## Why
 
-macOS shows a plain icon for Now Playing. MusicBar shows the **real cover** instead, like the iPhone's Dynamic Island. Click it for a small player.
+macOS shows a plain icon for Now Playing. ORBT shows the **real cover** instead, like the iPhone's Dynamic Island. Click it for a small player.
 
 <div align="center">
 <img src="assets/menubar-playing.png" width="560" alt="Playing">
@@ -63,7 +63,7 @@ How: the waveform animates on the graphics side, the menu bar uses a small thumb
 ## Install
 
 1. Download the zip from [Releases](https://github.com/Daniil15DDD/MusicBar/releases/latest) and unzip it.
-2. Move `MusicBar.app` to Applications and right-click → **Open** (it is not notarized).
+2. Move `ORBT.app` to Applications and right-click → **Open** (it is not notarized).
 3. Allow it to control Music and Spotify when macOS asks.
 
 Needs macOS 14.2+. For the newest features (lock screen player, moving artwork) build from source: `git clone` this repo, then `./build.sh` (Command Line Tools are enough).

@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let menu = NSMenu()
             menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Quit MusicBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            menu.addItem(withTitle: "Quit ORBT", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             item.menu = menu
             button.performClick(nil)
             item.menu = nil
@@ -154,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.performClose(nil)
         if settingsWindow == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
-            w.title = "MusicBar Settings"
+            w.title = "ORBT Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()

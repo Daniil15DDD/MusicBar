@@ -36,7 +36,7 @@ final class AudioLevels: ObservableObject {
         guard AudioHardwareCreateProcessTap(desc, &tap) == noErr, let outUID = defaultOutputUID() else { return fail() }
 
         let dict: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "MusicBarTap",
+            kAudioAggregateDeviceNameKey: "ORBTTap",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outUID,
             kAudioAggregateDeviceIsPrivateKey: true,

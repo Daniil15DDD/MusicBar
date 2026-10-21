@@ -67,7 +67,7 @@ struct PopoverView: View {
 
     private var subtitle: String {
         guard let i = media.info else {
-            return media.permissionDenied ? "Allow MusicBar in Privacy → Automation" : "Open Music or Spotify"
+            return media.permissionDenied ? "Allow ORBT in Privacy → Automation" : "Open Music or Spotify"
         }
         return [i.artist, i.album].filter { !$0.isEmpty }.joined(separator: " — ")
     }
@@ -78,7 +78,7 @@ struct PopoverView: View {
                 WaveformView(isAnimating: media.info?.isPlaying ?? false, levels: audio.running && audio.live ? audio.levels : nil, bpm: media.info?.bpm ?? 0, seed: media.info?.seed ?? 0, barWidth: 2, spacing: 2)
                     .frame(width: 14, height: 11)
             }
-            Text(media.info?.player.displayName ?? "MusicBar").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            Text(media.info?.player.displayName ?? "ORBT").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
             Spacer()
             headerButtons
             Button(action: openSettings) { Image(systemName: "gearshape").foregroundStyle(.secondary) }

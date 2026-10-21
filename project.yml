@@ -1,16 +1,16 @@
-name: MusicBar
+name: ORBT
 options:
   deploymentTarget: { macOS: "14.2" }
 targets:
-  MusicBar:
+  ORBT:
     type: application
     platform: macOS
     sources: [Sources]
     settings:
       base:
         INFOPLIST_FILE: Resources/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Resources/MusicBar.entitlements
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.MusicBar
+        CODE_SIGN_ENTITLEMENTS: Resources/ORBT.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ORBT
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_VERSION: "5.0"
         ARCHS: "arm64 x86_64"

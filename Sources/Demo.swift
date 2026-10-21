@@ -4,7 +4,7 @@ import AppKit
 /// Set while rendering the README images.
 enum DemoMode { static var staticWaveform = false }
 
-/// `MusicBar --render <dir> [--art <image>]` draws the real views with demo data to PNGs (used for the README images).
+/// `ORBT --render <dir> [--art <image>]` draws the real views with demo data to PNGs (used for the README images).
 @MainActor
 enum Demo {
     static func run(dir: URL, artPath: String?, lock: NowPlaying? = nil, lockArtPath: String? = nil, lockMotionPath: String? = nil) {
@@ -64,7 +64,7 @@ enum Demo {
                 strip(playing, width: 1280, menus: true)
                 HStack(spacing: 40) {
                     VStack(alignment: .leading, spacing: 18) {
-                        Text("MusicBar").font(.system(size: 76, weight: .bold, design: .rounded))
+                        Text("ORBT").font(.system(size: 76, weight: .bold, design: .rounded))
                         Text("Your album cover and a live waveform, right in the macOS menu bar.")
                             .font(.system(size: 28)).foregroundStyle(.white.opacity(0.8))
                         HStack(spacing: 10) {
