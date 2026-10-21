@@ -66,7 +66,7 @@ How: the waveform animates on the graphics side, the menu bar uses a small thumb
 2. Move `ORBT.app` to Applications and right-click → **Open** (it is not notarized).
 3. Allow it to control Music and Spotify when macOS asks.
 
-Needs macOS 14.2+. For the newest features (lock screen player, moving artwork) build from source: `git clone` this repo, then `./build.sh` (Command Line Tools are enough).
+Needs macOS 14.2+. To build it yourself instead: `git clone` this repo, then `./build.sh` (Command Line Tools are enough).
 
 ## Good to know
 
