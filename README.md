@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/hero.png" alt="ORBT: album cover and waveform in the macOS menu bar" width="100%">
+<img src="assets/hero.png?v=2" alt="ORBT: album cover and waveform in the macOS menu bar" width="100%">
 
 <img src="assets/icon.png" width="128" alt="ORBT icon">
 
