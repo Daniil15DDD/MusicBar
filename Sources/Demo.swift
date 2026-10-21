@@ -68,14 +68,19 @@ enum Demo {
                         Text("ORBT").font(.system(size: 76, weight: .bold, design: .rounded))
                         Text("Your album cover and a live waveform, right in the macOS menu bar.")
                             .font(.system(size: 28)).foregroundStyle(.white.opacity(0.8))
-                        HStack(spacing: 10) {
-                            ForEach(["Apple Music", "Spotify", "macOS 14.2+", "Free & open source"], id: \.self) { t in
-                                Text(t).font(.system(size: 17, weight: .medium)).padding(.horizontal, 12).padding(.vertical, 6)
-                                    .background(Capsule().fill(.white.opacity(0.14)))
+                        // two short rows so the left column stays narrow and the lock screen fits inside the banner
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach([["Apple Music", "Spotify"], ["macOS 14.2+", "Free & open source"]], id: \.self) { row in
+                                HStack(spacing: 10) {
+                                    ForEach(row, id: \.self) { t in
+                                        Text(t).font(.system(size: 17, weight: .medium)).padding(.horizontal, 12).padding(.vertical, 6)
+                                            .background(Capsule().fill(.white.opacity(0.14)))
+                                    }
+                                }
                             }
                         }
                     }
-                    .frame(width: 590, alignment: .leading)
+                    .frame(width: 470, alignment: .leading)
                     Spacer(minLength: 0)
                     if let lockMoving {
                         // the lock screen with moving artwork, with the popover overlapping its corner
