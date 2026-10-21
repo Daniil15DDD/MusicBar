@@ -34,6 +34,7 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 
 <div align="center">
 <img src="assets/lockscreen-fullscreen.png" width="720" alt="Lock screen fullscreen with the big cover and the player card">
+<br><sub>Rendered from the app's own views (the real lock screen shows your wallpaper and a glass blur behind the card).</sub>
 </div>
 
 ## Features
