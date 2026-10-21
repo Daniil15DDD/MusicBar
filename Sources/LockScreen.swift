@@ -603,6 +603,18 @@ final class LockBackdropView: ClickView {
 
     private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, dateL, timeL, compactL] }
 
+    /// README image only: a still frame of the moving artwork stands in for the video (an AVPlayer can't render offscreen).
+    func previewMotionStill(_ img: NSImage) {
+        isHidden = false
+        alphaValue = 1
+        wash.frame = bounds
+        wash.layer?.contents = img.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        shade.alphaValue = 0.15
+        big.isHidden = true; bigShadow.isHidden = true; compactL.isHidden = true
+        timeL.isHidden = false; dateL.isHidden = false
+        updateClock()
+    }
+
     /// Show the backdrop: the background fades in slowly (0.8s), the image (cover or video) faster (0.25s).
     func show() {
         fadeToken += 1

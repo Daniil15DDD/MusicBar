@@ -7,7 +7,7 @@ enum DemoMode { static var staticWaveform = false }
 /// `MusicBar --render <dir> [--art <image>]` draws the real views with demo data to PNGs (used for the README images).
 @MainActor
 enum Demo {
-    static func run(dir: URL, artPath: String?, lock: NowPlaying? = nil, lockArtPath: String? = nil) {
+    static func run(dir: URL, artPath: String?, lock: NowPlaying? = nil, lockArtPath: String? = nil, lockMotionPath: String? = nil) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         DemoMode.staticWaveform = true
         let art = artPath.flatMap { NSImage(contentsOfFile: $0) } ?? render(cover, scale: 1)!
@@ -87,12 +87,15 @@ enum Demo {
         if let lock, let lockArt = lockArtPath.flatMap({ NSImage(contentsOfFile: $0) }) {
             save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true), dir.appendingPathComponent("lockscreen-fullscreen.png"))
             save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: false), dir.appendingPathComponent("lockscreen-card.png"))
+            if let still = lockMotionPath.flatMap({ NSImage(contentsOfFile: $0) }) {
+                save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, motionStill: still), dir.appendingPathComponent("lockscreen-moving.png"))
+            }
         }
     }
 
     /// Renders the lock screen card (and, for fullscreen, the backdrop) offscreen. The glass blur and the user's wallpaper
     /// are not available offscreen, so a soft gradient stands in for the wallpaper.
-    static func renderLock(_ m: MediaController, fullscreen: Bool, size: NSSize = NSSize(width: 1440, height: 900)) -> NSImage? {
+    static func renderLock(_ m: MediaController, fullscreen: Bool, motionStill: NSImage? = nil, size: NSSize = NSSize(width: 1440, height: 900)) -> NSImage? {
         let root = NSView(frame: NSRect(origin: .zero, size: size))
         root.wantsLayer = true
         let wallpaper = CAGradientLayer()
@@ -106,7 +109,7 @@ enum Demo {
         if fullscreen {
             let backdrop = LockBackdropView(media: m, frame: root.bounds)
             root.addSubview(backdrop)
-            backdrop.show()
+            if let motionStill { backdrop.previewMotionStill(motionStill) } else { backdrop.show() }
         } else {
             // the system clock the real lock screen shows above the card
             let t = NSTextField(labelWithString: "9:41")

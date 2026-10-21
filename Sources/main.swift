@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 lock = NowPlaying(player: .music, title: f[0], artist: f[1], album: f[2], duration: Double(f[3]) ?? 0, position: Double(f[4]) ?? 0,
                                   isPlaying: true, shuffle: true, repeatMode: "all", favorited: true)
             }
-            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1]), artPath: arg("--art"), lock: lock, lockArtPath: arg("--lock-art")) }
+            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1]), artPath: arg("--art"), lock: lock, lockArtPath: arg("--lock-art"), lockMotionPath: arg("--lock-motion")) }
             exit(0)
         }
         item = NSStatusBar.system.statusItem(withLength: 46)
