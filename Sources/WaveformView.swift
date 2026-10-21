@@ -18,9 +18,11 @@ struct WaveformView: View {
                 bars(5) { 0.14 + 0.86 * CGFloat(min(max(levels[$0], 0), 1)) }
                     .animation(.linear(duration: 0.05), value: levels)
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !isAnimating)) { ctx in
-                    let t = ctx.date.timeIntervalSinceReferenceDate
-                    bars(4) { randomHeight($0, t) }
+                // Core Animation bars: no per-frame SwiftUI redraw (that was re-scaling the cover art 24 times a second)
+                if DemoMode.staticWaveform {   // the README image renderer can't draw AppKit views
+                    bars(5) { [0.45, 0.9, 0.65, 1.0, 0.5][$0] }
+                } else {
+                    WaveBars(animating: isAnimating)
                 }
             }
         }
@@ -67,4 +69,16 @@ extension Local where T == CGFloat {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { self.v = 1 }
         }
     }
+}
+
+/// Bridges the layer-based waveform (see LockScreen.swift) into SwiftUI.
+struct WaveBars: NSViewRepresentable {
+    var animating: Bool
+    func makeNSView(context: Context) -> WaveBarsView {
+        let v = WaveBarsView(frame: NSRect(x: 0, y: 0, width: 18, height: 14))
+        v.adaptiveColor = true
+        v.animating = animating
+        return v
+    }
+    func updateNSView(_ v: WaveBarsView, context: Context) { v.animating = animating }
 }

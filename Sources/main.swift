@@ -22,7 +22,7 @@ struct MenuBarContent: View {
             if let info = media.info {
                 if showArtwork {
                     // Fades darker when paused; pulses on every play/pause change.
-                    artwork(media.artwork, dim: false)
+                    artwork(media.thumbnail ?? media.artwork, dim: false)
                         .brightness(info.isPlaying ? 0 : -0.25)
                         .scaleEffect(pulse.v)
                 }
@@ -34,7 +34,7 @@ struct MenuBarContent: View {
                         .frame(width: 16, height: 12)
                 }
             } else if fallback == "lastArtwork", showArtwork, let img = media.lastArtwork {
-                artwork(img, dim: true)
+                artwork(media.thumbnail ?? img, dim: true)
             } else {
                 Image(systemName: "music.note").font(.system(size: 14, weight: .medium))
             }
@@ -62,6 +62,7 @@ struct MenuBarContent: View {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let media = MediaController()
     let audio = AudioLevels()
+    var lockScreen: LockScreenController?
     var item: NSStatusItem!
     let popover = NSPopover()
     var settingsWindow: NSWindow?
@@ -69,8 +70,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         if let i = CommandLine.arguments.firstIndex(of: "--render"), i + 1 < CommandLine.arguments.count {
-            let art = CommandLine.arguments.firstIndex(of: "--art").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil }
-            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1]), artPath: art) }
+            func arg(_ name: String) -> String? { CommandLine.arguments.firstIndex(of: name).flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil } }
+            // --lock-info "title|artist|album|duration|position" with --lock-art <image>: the song for the lock screen images
+            var lock: NowPlaying?
+            if let f = arg("--lock-info")?.components(separatedBy: "|"), f.count == 5 {
+                lock = NowPlaying(player: .music, title: f[0], artist: f[1], album: f[2], duration: Double(f[3]) ?? 0, position: Double(f[4]) ?? 0,
+                                  isPlaying: true, shuffle: true, repeatMode: "all", favorited: true)
+            }
+            MainActor.assumeIsolated { Demo.run(dir: URL(fileURLWithPath: CommandLine.arguments[i + 1]), artPath: arg("--art"), lock: lock, lockArtPath: arg("--lock-art")) }
             exit(0)
         }
         item = NSStatusBar.system.statusItem(withLength: 46)
@@ -83,7 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             button.action = #selector(clicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+        lockScreen = LockScreenController(media: media)
         popover.behavior = .transient
+        // Hide the pointer arrow (undocumented NSPopover switch; guarded so a future macOS just keeps the arrow).
+        if popover.responds(to: NSSelectorFromString("setShouldHideAnchor:")) { popover.setValue(true, forKey: "shouldHideAnchor") }
         popover.delegate = self
 
         media.$info.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.applyVisibility() }.store(in: &cancellables)

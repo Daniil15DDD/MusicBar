@@ -31,13 +31,23 @@ final class MediaController: ObservableObject {
     @Published private(set) var info: NowPlaying?
     @Published private(set) var artwork: NSImage?
     @Published private(set) var lastArtwork: NSImage?
+    /// Small pre-scaled copy of the cover for the menu bar, so SwiftUI never re-scales the full-size image on every redraw.
+    @Published private(set) var thumbnail: NSImage?
     @Published private(set) var permissionDenied = false
+    /// Apple's moving artwork for the current album, when it has one (nil = show the static cover).
+    @Published private(set) var motionURL: URL?
+    private var motionKey = ""
+    private var motionCache: [String: URL?] = [:]   // main-thread only; a nil value means "checked, none"
     /// Wall-clock moment `info.position` was sampled, used to interpolate the progress bar.
     private(set) var sampleDate = Date()
 
     private let queue = DispatchQueue(label: "musicbar.media")
+    private let cmdQueue = DispatchQueue(label: "musicbar.cmd", qos: .userInitiated)   // slow commands must not block refreshes
+    /// Favourite we set on click; held until Music confirms it so a stale read can't flip the heart back.
+    private var pendingFav: (key: String, value: Bool, until: Date)?
     private var artCache: [String: NSImage] = [:]   // queue-confined
     private var artKey = ""                          // queue-confined
+    private var artTries: [String: Int] = [:]        // queue-confined: cover lookups per song (it can be missing at first)
     /// Play state we set on click; stale refreshes are ignored until it expires so the UI never flips back.
     private var pendingPlay: (value: Bool, until: Date, click: Bool)?
     private var timer: Timer?
@@ -94,20 +104,28 @@ final class MediaController: ObservableObject {
             if let c = chosen {
                 if c.key != self.artKey {
                     self.artKey = c.key
-                    if self.artCache[c.key] == nil, let img = self.fetchArtwork(c) { self.artCache[c.key] = img }
-                    if self.artCache.count > 20 { self.artCache = self.artCache.filter { $0.key == c.key } }
+                    if self.artCache.count > 20 { self.artCache = self.artCache.filter { $0.key == c.key }; self.artTries = [:] }
+                }
+                // The cover can be missing right at the start of a song; retry on the next few refreshes, then use the catalogue.
+                if self.artCache[c.key] == nil, (self.artTries[c.key] ?? 0) < 4 {
+                    self.artTries[c.key, default: 0] += 1
+                    if let img = self.fetchArtwork(c) { self.artCache[c.key] = img }
                 }
                 art = self.artCache[c.key]
             }
             DispatchQueue.main.async {
                 var chosen = chosen
+                if let f = self.pendingFav {
+                    if Date() >= f.until || chosen?.key != f.key || chosen?.favorited == f.value { self.pendingFav = nil }
+                    else { chosen?.favorited = f.value }
+                }
                 if let p = self.pendingPlay {
                     if Date() < p.until { chosen?.isPlaying = p.value } else { self.pendingPlay = nil }
                 }
                 self.permissionDenied = denied
                 self.sampleDate = Date()
                 if self.info != chosen { self.info = chosen } else if let chosen { self.info?.position = chosen.position }
-                if self.artwork !== art { self.artwork = art }
+                if self.artwork !== art { self.artwork = art; self.thumbnail = art.flatMap { Self.makeThumbnail($0) } }
                 if let art { self.lastArtwork = art }
             }
         }
@@ -162,15 +180,26 @@ final class MediaController: ObservableObject {
                            shuffle: f[7] == "true", repeatMode: f[8], favorited: f[6] == "true", bpm: num(f[9])), nil)
     }
 
+    private static func makeThumbnail(_ art: NSImage, px: Int = 96) -> NSImage? {
+        guard let cg = art.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        let w = CGFloat(cg.width), h = CGFloat(cg.height), s = max(CGFloat(px) / w, CGFloat(px) / h)   // aspect fill
+        ctx.draw(cg, in: CGRect(x: (CGFloat(px) - w * s) / 2, y: (CGFloat(px) - h * s) / 2, width: w * s, height: h * s))
+        return ctx.makeImage().map { NSImage(cgImage: $0, size: NSSize(width: px / 2, height: px / 2)) }
+    }
+
     private func fetchArtwork(_ c: NowPlaying) -> NSImage? {
         switch c.player {
         case .music:
             let (d, _) = run("tell application \"Music\" to return raw data of artwork 1 of current track")
-            return d.flatMap { NSImage(data: $0.data) }
+            if let img = d.flatMap({ NSImage(data: $0.data) }) { return img }
+            return (self.artTries[c.key] ?? 0) >= 2 ? MotionArt.catalogCover(artist: c.artist, title: c.title) : nil   // Music gave none
         case .spotify:
             let (d, _) = run("tell application \"Spotify\" to return artwork url of current track")
-            guard let s = d?.stringValue, let url = URL(string: s), let data = try? Data(contentsOf: url) else { return nil }
-            return NSImage(data: data)
+            if let s = d?.stringValue, let url = URL(string: s), let data = try? Data(contentsOf: url), let img = NSImage(data: data) { return img }
+            return (self.artTries[c.key] ?? 0) >= 2 ? MotionArt.catalogCover(artist: c.artist, title: c.title) : nil
         }
     }
 
@@ -184,7 +213,7 @@ final class MediaController: ObservableObject {
 
     private func send(_ command: String) {
         guard let p = info?.player else { return }
-        queue.async { [weak self] in
+        cmdQueue.async { [weak self] in
             _ = self?.run("tell application \"\(p.appName)\" to \(command)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self?.refresh() }
         }
@@ -200,6 +229,22 @@ final class MediaController: ObservableObject {
         i.isPlaying = playing
         sampleDate = now
         info = i
+    }
+
+    /// Looks up the moving artwork once per album (cached). Called when the big artwork view opens.
+    func loadMotionIfNeeded() {
+        guard let c = info, !c.album.isEmpty else { motionKey = ""; motionURL = nil; return }
+        let k = c.artist + "|" + c.album + "|" + c.title
+        guard k != motionKey else { return }
+        motionKey = k; motionURL = nil
+        if let cached = motionCache[k] { motionURL = cached; return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let u = MotionArt.find(artist: c.artist, album: c.album, title: c.title)
+            DispatchQueue.main.async {
+                self?.motionCache[k] = .some(u)
+                if self?.motionKey == k { self?.motionURL = u }
+            }
+        }
     }
 
     func togglePlayPause() {
@@ -236,6 +281,7 @@ final class MediaController: ObservableObject {
     func toggleFavorite() {
         guard let i = info, i.player == .music else { return }
         info?.favorited.toggle()
+        pendingFav = (i.key, !i.favorited, Date().addingTimeInterval(20))
         send("set favorited of current track to \(!i.favorited)")
     }
 

@@ -1,15 +1,19 @@
 import SwiftUI
 import AppKit
 
+/// Set while rendering the README images.
+enum DemoMode { static var staticWaveform = false }
+
 /// `MusicBar --render <dir> [--art <image>]` draws the real views with demo data to PNGs (used for the README images).
 @MainActor
 enum Demo {
-    static func run(dir: URL, artPath: String?) {
+    static func run(dir: URL, artPath: String?, lock: NowPlaying? = nil, lockArtPath: String? = nil) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        DemoMode.staticWaveform = true
         let art = artPath.flatMap { NSImage(contentsOfFile: $0) } ?? render(cover, scale: 1)!
         func np(_ playing: Bool) -> NowPlaying {
-            NowPlaying(player: .music, title: "One More Hour", artist: "Tame Impala", album: "The Slow Rush",
-                       duration: 433, position: 84, isPlaying: playing, shuffle: true, repeatMode: "all", favorited: true)
+            NowPlaying(player: .music, title: "Sweater Weather", artist: "The Neighbourhood", album: "I Love You.",
+                       duration: 240, position: 90, isPlaying: playing, shuffle: true, repeatMode: "all", favorited: true)
         }
         let playing = MediaController(demo: np(true), artwork: art)
         let paused = MediaController(demo: np(false), artwork: art)
@@ -78,6 +82,52 @@ enum Demo {
         .environment(\.colorScheme, .dark)
         .frame(width: 1280, height: 640)
         save(render(hero), dir.appendingPathComponent("hero.png"))
+
+        // Lock screen: the real AppKit views, rendered offscreen with the song that is playing now.
+        if let lock, let lockArt = lockArtPath.flatMap({ NSImage(contentsOfFile: $0) }) {
+            save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true), dir.appendingPathComponent("lockscreen-fullscreen.png"))
+            save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: false), dir.appendingPathComponent("lockscreen-card.png"))
+        }
+    }
+
+    /// Renders the lock screen card (and, for fullscreen, the backdrop) offscreen. The glass blur and the user's wallpaper
+    /// are not available offscreen, so a soft gradient stands in for the wallpaper.
+    static func renderLock(_ m: MediaController, fullscreen: Bool, size: NSSize = NSSize(width: 1440, height: 900)) -> NSImage? {
+        let root = NSView(frame: NSRect(origin: .zero, size: size))
+        root.wantsLayer = true
+        let wallpaper = CAGradientLayer()
+        wallpaper.frame = root.bounds
+        wallpaper.colors = [NSColor(red: 0.20, green: 0.19, blue: 0.18, alpha: 1).cgColor, NSColor(red: 0.07, green: 0.06, blue: 0.06, alpha: 1).cgColor]
+        root.layer?.addSublayer(wallpaper)
+        let win = NSWindow(contentRect: root.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+        win.contentView = root
+        let card = LockCardView(media: m)
+        card.frame.origin = NSPoint(x: (size.width - LockCardView.size.width) / 2, y: size.height * 0.22 - LockCardView.size.height / 2)
+        if fullscreen {
+            let backdrop = LockBackdropView(media: m, frame: root.bounds)
+            root.addSubview(backdrop)
+            backdrop.show()
+        } else {
+            // the system clock the real lock screen shows above the card
+            let t = NSTextField(labelWithString: "9:41")
+            t.font = NSFont.systemFont(ofSize: 150, weight: .thin); t.textColor = .white; t.alignment = .center
+            t.frame = NSRect(x: 0, y: size.height * 0.62, width: size.width, height: 190)
+            root.addSubview(t)
+        }
+        root.addSubview(card)
+        card.setActive(true)
+        card.useFlatBackgroundForScreenshots(fullscreen: fullscreen)
+        root.layoutSubtreeIfNeeded()
+        win.displayIfNeeded()
+        let scale: CGFloat = 2
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        ctx.cgContext.scaleBy(x: scale, y: scale)
+        root.layer?.render(in: ctx.cgContext)
+        let img = NSImage(size: size)
+        img.addRepresentation(rep)
+        return img
     }
 
     /// Generated fallback cover, used when no `--art` image is passed.

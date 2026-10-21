@@ -28,6 +28,7 @@ struct PopoverView: View {
     @AppStorage("showWaveform") private var showWaveform = true
     @StateObject private var scrubBox = Local<Double?>(nil)
     @StateObject private var eqBox = Local(false)
+    @StateObject private var bigBox = Local(false)
     @StateObject private var pulse = Local<CGFloat>(1)
     private var scrub: Double? { get { scrubBox.v } nonmutating set { scrubBox.v = newValue } }
 
@@ -36,9 +37,16 @@ struct PopoverView: View {
             header
             if eqBox.v {
                 EqualizerPanel(media: media)
+            } else if bigBox.v {
+                bigArtwork
+                VStack(spacing: 2) {
+                    Text(media.info?.title ?? "Not Playing").font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                    Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                progress
             } else {
                 HStack(spacing: 12) {
-                    artwork
+                    artwork.onTapGesture { bigBox.v = true }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(media.info?.title ?? "Not Playing").font(.system(size: 14, weight: .semibold)).lineLimit(2)
                         Text(media.info?.artist ?? subtitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
@@ -92,6 +100,28 @@ struct PopoverView: View {
         .onChange(of: media.info?.isPlaying) { _, _ in pulse.press() }
         .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
             }
+
+    /// Apple Music-style big artwork: moving artwork when the album has it, otherwise the plain cover. Tap to go back.
+    private var bigArtwork: some View {
+        ZStack {
+            Group {
+                if let img = media.artwork {
+                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    ZStack { Color.gray.opacity(0.25); Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(.secondary) }
+                }
+            }
+            if let url = media.motionURL { LoopingVideo(url: url).transition(.opacity) }
+        }
+        .frame(width: 248, height: 248)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+        .scaleEffect(pulse.v)
+        .onTapGesture { bigBox.v = false }
+        .onAppear { media.loadMotionIfNeeded() }
+        .onChange(of: media.info?.album) { _, _ in media.loadMotionIfNeeded() }
+        .animation(.easeInOut(duration: 0.3), value: media.motionURL)
+    }
 
     private var progress: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in

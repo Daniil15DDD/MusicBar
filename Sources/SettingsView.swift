@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage("openPopoverOnClick") private var openPopoverOnClick = true
     @AppStorage("fallback") private var fallback = "icon"
     @AppStorage("reactiveAudio") private var reactiveAudio = false
+    @AppStorage("lockScreenPlayer") private var lockScreenPlayer = true
+    @AppStorage("lockLiquidGlass") private var lockLiquidGlass = false
     @StateObject private var loginBox = Local(SMAppService.mainApp.status == .enabled)
     private var launchAtLogin: Bool { get { loginBox.v } nonmutating set { loginBox.v = newValue } }
     @StateObject private var errBox = Local<String?>(nil)
@@ -35,6 +37,10 @@ struct SettingsView: View {
                 }
             }
             Section("Behaviour") {
+                Toggle("Show the player on the lock screen", isOn: $lockScreenPlayer)
+                if #available(macOS 26.0, *) {
+                    Toggle("Liquid Glass look on the lock screen", isOn: $lockLiquidGlass).disabled(!lockScreenPlayer)
+                }
                 Toggle("Open player popover on click", isOn: $openPopoverOnClick)
                 Text("When off, a click toggles play/pause. Right-click always opens the menu.").font(.caption).foregroundStyle(.secondary)
                 Picker("Player", selection: $preferredPlayer) {
