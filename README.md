@@ -54,11 +54,9 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 
 Built to stay out of the way. Measured with `top` on an Apple Silicon MacBook (macOS 27) while a song was playing, with the popover and lock screen closed:
 
-| | |
-|---|---|
-| CPU while playing | about **1%** (0.3 to 1.2% over a 10 second sample) |
-| CPU while paused | under 1% |
-| Memory | about **43 MB** |
+<div align="center">
+<img src="assets/performance.png" width="720" alt="About 1% CPU while playing, under 1% while paused, 43 MB memory">
+</div>
 
 How: the waveform animates on the graphics side, the menu bar uses a small thumbnail of the cover, updates come from Music's own notifications, and the moving-artwork video only exists while the lock screen fullscreen is open. The video playing in fullscreen costs more, and I haven't measured that.
 

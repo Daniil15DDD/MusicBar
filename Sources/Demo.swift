@@ -99,6 +99,34 @@ enum Demo {
         .frame(width: 1280, height: 640)
         save(render(hero), dir.appendingPathComponent("hero.png"))
 
+        func stat(_ big: String, _ label: String) -> some View {
+            VStack(spacing: 10) {
+                Text(big).font(.system(size: 92, weight: .bold, design: .rounded))
+                Text(label).font(.system(size: 24, weight: .medium)).foregroundStyle(.white.opacity(0.75))
+            }
+            .frame(width: 330, height: 220)
+            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(.white.opacity(0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.14)))
+        }
+        let perf = ZStack {
+            LinearGradient(colors: [Color(red: 0.18, green: 0.08, blue: 0.35), Color(red: 0.03, green: 0.03, blue: 0.08)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: 44) {
+                Text("Light on your Mac").font(.system(size: 64, weight: .bold, design: .rounded))
+                HStack(spacing: 28) {
+                    stat("~1%", "CPU while playing")
+                    stat("<1%", "CPU while paused")
+                    stat("43 MB", "memory")
+                }
+                Text("Measured with top on an Apple Silicon MacBook, macOS 27, popover and lock screen closed.")
+                    .font(.system(size: 20)).foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .frame(width: 1280, height: 640)
+        save(render(perf), dir.appendingPathComponent("performance.png"))
+
         // Lock screen: the real AppKit views, rendered offscreen with the song that is playing now.
         if let lock, let lockArt = lockArtPath.flatMap({ NSImage(contentsOfFile: $0) }) {
             save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true), dir.appendingPathComponent("lockscreen-fullscreen.png"))
