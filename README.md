@@ -10,7 +10,7 @@
 
 [![macOS](https://img.shields.io/badge/macOS-14.2%2B-black?logo=apple&logoColor=white)](#install)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Download](https://img.shields.io/github/v/release/Daniil15DDD/MusicBar?label=download)](https://github.com/Daniil15DDD/MusicBar/releases/latest)
+[![Download](https://img.shields.io/github/v/release/Daniil15DDD/ORBT?label=download)](https://github.com/Daniil15DDD/ORBT/releases/latest)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/barabashka123)
 
 </div>
@@ -62,7 +62,7 @@ How: the waveform animates on the graphics side, the menu bar uses a small thumb
 
 ## Install
 
-1. Download the zip from [Releases](https://github.com/Daniil15DDD/MusicBar/releases/latest) and unzip it.
+1. Download the zip from [Releases](https://github.com/Daniil15DDD/ORBT/releases/latest) and unzip it.
 2. Move `ORBT.app` to Applications and right-click → **Open** (it is not notarized).
 3. Allow it to control Music and Spotify when macOS asks.
 
