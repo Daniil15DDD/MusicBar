@@ -34,6 +34,8 @@ final class MediaController: ObservableObject {
     /// Small pre-scaled copy of the cover for the menu bar, so SwiftUI never re-scales the full-size image on every redraw.
     @Published private(set) var thumbnail: NSImage?
     @Published private(set) var permissionDenied = false
+    /// Name of a running player macOS refused us access to (Automation permission), so the UI can say what to do.
+    @Published private(set) var deniedPlayer: String?
     /// Apple's moving artwork for the current album, when it has one (nil = show the static cover).
     @Published private(set) var motionURL: URL?
     private var motionKey = ""
@@ -92,11 +94,12 @@ final class MediaController: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             var denied = false
+            var deniedName: String?
             var candidates: [NowPlaying] = []
             for p in Player.allCases where preferred == "auto" || preferred == p.rawValue {
                 guard !NSRunningApplication.runningApplications(withBundleIdentifier: p.bundleID).isEmpty else { continue }
                 let (np, err) = self.fetch(p)
-                if err == -1743 { denied = true }
+                if err == -1743 { denied = true; deniedName = p.displayName }
                 if let np { candidates.append(np) }
             }
             let chosen = candidates.first(where: { $0.isPlaying }) ?? candidates.first
@@ -123,6 +126,7 @@ final class MediaController: ObservableObject {
                     if Date() < p.until { chosen?.isPlaying = p.value } else { self.pendingPlay = nil }
                 }
                 self.permissionDenied = denied
+                self.deniedPlayer = deniedName
                 self.sampleDate = Date()
                 if self.info != chosen { self.info = chosen } else if let chosen { self.info?.position = chosen.position }
                 if self.artwork !== art { self.artwork = art; self.thumbnail = art.flatMap { Self.makeThumbnail($0) } }

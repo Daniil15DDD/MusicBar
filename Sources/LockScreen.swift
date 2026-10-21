@@ -433,7 +433,9 @@ final class LockCardView: NSView {
         let i = media.info
         let playing = i?.isPlaying == true
         titleL.stringValue = i?.title ?? "Not Playing"
-        artistL.stringValue = i?.artist ?? ""
+        // If a running player was refused (Automation permission) and nothing is playing, say what to do instead of showing nothing.
+        let hint = media.deniedPlayer.flatMap { i?.isPlaying == true ? nil : "Allow ORBT to control \($0): Settings → Privacy → Automation" }
+        artistL.stringValue = hint ?? i?.artist ?? ""
         // shuffle / repeat: bright when on, dim when off; repeat shows "1" for repeat-one
         let repeatMode = i?.repeatMode ?? "off"
         shuffleB.contentTintColor = NSColor.white.withAlphaComponent(i?.shuffle == true ? 1 : 0.45)
@@ -768,8 +770,12 @@ final class LockScreenController {
         cardPanel = LockScreenController.makePanel(frame: NSRect(origin: .zero, size: LockCardView.size), shadow: true)
         backdropPanel.contentView = backdrop
         cardPanel.contentView = card
+        // Put each window in its own SkyLight space at the lock screen level (the backdrop one level below the card).
+        // These calls are what make the card visible on the lock screen: do not remove them with any logging.
         backdropPanel.orderFrontRegardless()
+        _ = SkyLightSpace.attach(backdropPanel, levelOffset: -1)
         cardPanel.orderFrontRegardless()
+        _ = SkyLightSpace.attach(cardPanel)
         place()
 
         card.onCoverTap = { [weak self] in self?.setFullscreen(!(self?.fullscreen ?? false)) }

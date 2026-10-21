@@ -66,6 +66,7 @@ struct PopoverView: View {
     }
 
     private var subtitle: String {
+        if let p = media.deniedPlayer, media.info?.isPlaying != true { return "Allow ORBT to control \(p): Settings → Privacy → Automation" }
         guard let i = media.info else {
             return media.permissionDenied ? "Allow ORBT in Privacy → Automation" : "Open Music or Spotify"
         }
