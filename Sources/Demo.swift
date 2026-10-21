@@ -53,6 +53,10 @@ enum Demo {
         save(render(strip(paused, width: 560, menus: false).background(Color(white: 0.08)).environment(\.colorScheme, .dark)), dir.appendingPathComponent("menubar-paused.png"))
         save(render(popover(playing).environment(\.colorScheme, .dark)), dir.appendingPathComponent("popover.png"))
 
+        let lockMoving: NSImage? = {
+            guard let lock, let lockArt = lockArtPath.flatMap({ NSImage(contentsOfFile: $0) }), let still = lockMotionPath.flatMap({ NSImage(contentsOfFile: $0) }) else { return nil }
+            return renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, motionStill: still)
+        }()
         let hero = ZStack(alignment: .top) {
             LinearGradient(colors: [Color(red: 0.18, green: 0.08, blue: 0.35), Color(red: 0.03, green: 0.03, blue: 0.08)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -70,9 +74,21 @@ enum Demo {
                             }
                         }
                     }
-                    .frame(width: 600, alignment: .leading)
+                    .frame(width: 590, alignment: .leading)
                     Spacer(minLength: 0)
-                    popover(playing).padding(.trailing, -10)
+                    if let lockMoving {
+                        // the lock screen with moving artwork, with the popover overlapping its corner
+                        ZStack(alignment: .bottomLeading) {
+                            Image(nsImage: lockMoving).resizable().aspectRatio(contentMode: .fit).frame(width: 600)
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.18)))
+                                .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+                            popover(playing).scaleEffect(0.78, anchor: .bottomLeading).offset(x: -70, y: 40)
+                        }
+                        .padding(.trailing, -20)
+                    } else {
+                        popover(playing).padding(.trailing, -10)
+                    }
                 }
                 .padding(.horizontal, 60)
                 .frame(maxHeight: .infinity)

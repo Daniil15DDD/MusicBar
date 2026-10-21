@@ -278,12 +278,12 @@ final class LockCardView: NSView {
         glass.layer?.masksToBounds = true
         tint.frame = bounds
         tint.wantsLayer = true
-        tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.14).cgColor
         tint.layer?.cornerRadius = 26
         if #available(macOS 26.0, *) {
             let g = NSGlassEffectView(frame: bounds)
             g.cornerRadius = 26
-            g.style = .regular
+            g.style = .clear   // the clearer glass: you see the wallpaper through the card
             if #available(macOS 27.0, *) { g.effectIsInteractive = true }
             liquid = g
         }
@@ -363,7 +363,7 @@ final class LockCardView: NSView {
         glass.isHidden = true
         liquid?.isHidden = true
         tint.isHidden = false
-        tint.layer?.backgroundColor = NSColor(white: 0.14, alpha: 0.82).cgColor
+        tint.layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.42).cgColor   // see-through, like the glass
         layer?.borderWidth = 1
     }
 
