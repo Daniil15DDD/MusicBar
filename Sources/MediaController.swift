@@ -69,10 +69,13 @@ final class MediaController: ObservableObject {
     private var tokens: [(NotificationCenter, NSObjectProtocol)] = []
 
     /// Static instance for rendering README images (`--render`); no observers or timers.
+    private var isDemo = false   // README renders: no network lookups, so the image shows exactly what it is told to
+
     init(demo: NowPlaying, artwork: NSImage) {
         info = demo
         self.artwork = artwork
         lastArtwork = artwork
+        isDemo = true
     }
 
     init() {
@@ -262,6 +265,7 @@ final class MediaController: ObservableObject {
 
     /// Looks up the moving artwork once per album (cached). Called when the big artwork view opens.
     func loadMotionIfNeeded() {
+        guard !isDemo else { return }
         guard let c = info, !c.album.isEmpty else { motionKey = ""; motionURL = nil; return }
         let k = c.artist + "|" + c.album + "|" + c.title
         guard k != motionKey else { return }
