@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Four thin bars that ease to a new random height (35–100 %) every 0.3 s while playing, like Boring Notch.
+/// Five thin bars, each looping through its own smooth curve while playing (see WaveBarsView).
 /// With `levels` (opt-in live audio bands) five bars follow the music instead. Static while paused.
 struct WaveformView: View {
     var isAnimating: Bool
@@ -64,9 +64,9 @@ final class Local<T>: ObservableObject {
 extension Local where T == CGFloat {
     /// One-shot "tap" feedback: dip in fast, spring back out.
     func press() {
-        withAnimation(.easeOut(duration: 0.08)) { v = 0.8 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { self.v = 1 }
+        withAnimation(.easeOut(duration: 0.09)) { v = 0.88 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { self.v = 1 }   // settles without wobbling
         }
     }
 }

@@ -63,17 +63,27 @@ enum MotionArt {
         }
         var tried = Set<String>()
         func firstMotion(_ list: [String]) -> URL? {
-            for page in list.filter({ !tried.contains($0) }).prefix(6) {
-                tried.insert(page)
-                guard let u = URL(string: page), let html = fetch(u).flatMap({ String(data: $0, encoding: .utf8) }) else { continue }
-                if let v = video(in: html, key: "motionDetailSquare") ?? video(in: html, key: "motionDetailTall") { return v }
+            let pages = list.filter { !tried.contains($0) }.prefix(6).compactMap { URL(string: $0) }
+            tried.formUnion(pages.map { $0.absoluteString })
+            // each album page is ~0.5 MB: fetch them three at a time instead of one after the other, then take the first in order
+            for batch in stride(from: 0, to: pages.count, by: 3) {
+                for data in fetchMany(Array(pages[batch..<min(batch + 3, pages.count)])) {
+                    guard let html = data.flatMap({ String(data: $0, encoding: .utf8) }) else { continue }
+                    if let v = video(in: html, key: "motionDetailSquare") ?? video(in: html, key: "motionDetailTall") { return v }
+                }
             }
             return nil
         }
 
-        // 1) albums matching the name, 2) the song's own releases
-        for r in search("\(artist) \(album)", "album") where similarAlbum(r) && sameArtist(r) { add(r) }
-        for r in search("\(artist) \(title)", "song") where norm(r["trackName"] as? String ?? "") == norm(title) && sameArtist(r) { add(r) }
+        // 1) albums matching the name, 2) the song's own releases (both searches at the same time)
+        var albumHits: [[String: Any]] = [], songHits: [[String: Any]] = []
+        let lock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: 2) { i in
+            let r = i == 0 ? search("\(artist) \(album)", "album") : search("\(artist) \(title)", "song")
+            lock.lock(); if i == 0 { albumHits = r } else { songHits = r }; lock.unlock()
+        }
+        for r in albumHits where similarAlbum(r) && sameArtist(r) { add(r) }
+        for r in songHits where norm(r["trackName"] as? String ?? "") == norm(title) && sameArtist(r) { add(r) }
         if let v = firstMotion(exact) { return v }
         // 3) the artist's whole catalogue: the search API misses many releases and same-named editions, but the artist lookup lists them
         for a in search(artist, "musicArtist") where norm(a["artistName"] as? String ?? "") == wantArtist {
@@ -95,6 +105,11 @@ enum MotionArt {
         return URL(string: String(html[r]))
     }
 
+    /// Network requests that failed so far. A lookup that found nothing while this went up must not be remembered as "has no moving artwork".
+    private static let failLock = NSLock()
+    private static var failures = 0
+    static var failureCount: Int { failLock.lock(); defer { failLock.unlock() }; return failures }
+
     private static func fetch(_ url: URL) -> Data? {
         var req = URLRequest(url: url, timeoutInterval: 8)
         req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
@@ -102,8 +117,79 @@ enum MotionArt {
         var out: Data?
         URLSession.shared.dataTask(with: req) { d, _, _ in out = d; sem.signal() }.resume()
         _ = sem.wait(timeout: .now() + 10)
+        if out == nil { failLock.lock(); failures += 1; failLock.unlock() }
         return out
     }
+
+    /// Several downloads at the same time; the results come back in the order of `urls`.
+    private static func fetchMany(_ urls: [URL]) -> [Data?] {
+        var out = [Data?](repeating: nil, count: urls.count)
+        let lock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: urls.count) { i in
+            let d = fetch(urls[i])
+            lock.lock(); out[i] = d; lock.unlock()
+        }
+        return out
+    }
+}
+
+/// Remembers which album has which moving artwork, so the lookup happens once per album, even across launches.
+/// Tiny: only the video addresses (a few KB in the Caches folder), never the videos. "No moving artwork" is remembered for 6 hours
+/// (Apple adds covers over time), an address for 60 days.
+enum MotionCache {
+    private static let queue = DispatchQueue(label: "orbt.motioncache")
+    private static let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("ORBT-motion.json")
+    private static var entries: [String: [String: Any]] = {
+        (try? Data(contentsOf: file)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] } ?? [:]
+    }()
+
+    /// nil = not known yet; .some(nil) = known to have none; .some(url) = known address.
+    static func get(_ key: String) -> URL?? {
+        queue.sync {
+            guard let e = entries[key], let t = e["date"] as? Double else { return nil }
+            let age = Date().timeIntervalSince1970 - t
+            if let s = e["url"] as? String, !s.isEmpty { return age < 60 * 86400 ? .some(URL(string: s)) : nil }
+            return age < 6 * 3600 ? .some(nil) : nil
+        }
+    }
+
+    static func set(_ key: String, _ url: URL?) {
+        queue.sync {
+            entries[key] = ["url": url?.absoluteString ?? "", "date": Date().timeIntervalSince1970]
+            if entries.count > 500 { entries = entries.filter { ($0.value["date"] as? Double ?? 0) > Date().timeIntervalSince1970 - 30 * 86400 } }
+            if let d = try? JSONSerialization.data(withJSONObject: entries) { try? d.write(to: file, options: .atomic) }
+        }
+    }
+}
+
+/// Remembers which version of a stream was chosen from its master playlist, so the playlist is downloaded once per video.
+/// (A look-ahead that kept the NEXT song's clip buffered was tried and removed: ~23 MB per clip, and with shuffle on the next song is unknown.)
+final class MotionStreams {
+    static let shared = MotionStreams()
+    private var variants: [String: URL] = [:]      // main thread only; master playlist -> the version chosen from it (a few bytes each)
+
+    private func key(_ u: URL, _ px: CGFloat) -> String { "\(u.absoluteString)|\(Int(px))" }
+
+    /// The sharpest version of the stream up to `maxPixels`; the playlist is downloaded only once per video.
+    func variant(for u: URL, maxPixels: CGFloat, _ done: @escaping (URL?) -> Void) {
+        if let v = variants[key(u, maxPixels)] { done(v); return }
+        URLSession.shared.dataTask(with: u) { data, _, _ in
+            let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
+            let v = LoopingPlayerView.bestVariant(in: text, base: u, maxPixels: maxPixels)
+            DispatchQueue.main.async {
+                if let v { if self.variants.count > 50 { self.variants = [:] }; self.variants[self.key(u, maxPixels)] = v }
+                done(v)
+            }
+        }.resume()
+    }
+
+    static func makeItem(_ source: URL, maxPixels: CGFloat) -> AVPlayerItem {
+        let item = AVPlayerItem(url: source)
+        item.preferredMaximumResolution = CGSize(width: maxPixels, height: maxPixels)
+        item.preferredForwardBufferDuration = 15   // the whole loop
+        return item
+    }
+
 }
 
 /// Muted, looping video; capped at 720p so it stays light. Only exists while the big view is on screen.
@@ -142,23 +228,25 @@ final class LoopingPlayerView: NSView {
     func load(_ u: URL) {
         stop()
         url = u
-        URLSession.shared.dataTask(with: u) { [weak self] data, _, _ in
-            let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
-            DispatchQueue.main.async {
-                guard let self, self.url == u else { return }   // a newer load() or a stop() superseded this one
-                self.start(LoopingPlayerView.bestVariant(in: text, base: u, maxPixels: self.maxPixels) ?? u)
-            }
-        }.resume()
+        MotionStreams.shared.variant(for: u, maxPixels: maxPixels) { [weak self] v in
+            guard let self, self.url == u else { return }   // a newer load() or a stop() superseded this one
+            self.start(v ?? u)
+        }
     }
 
     private func start(_ source: URL) {
-        let item = AVPlayerItem(url: source)
-        item.preferredMaximumResolution = CGSize(width: maxPixels, height: maxPixels)
+        let item = MotionStreams.makeItem(source, maxPixels: maxPixels)
+        observeEnd(item)
+        player.replaceCurrentItem(with: item)
+        if shouldPlay { player.play() } else { player.pause() }
+    }
+
+    private func observeEnd(_ item: AVPlayerItem?) {
+        if let o = observer { NotificationCenter.default.removeObserver(o); observer = nil }
+        guard let item else { return }
         observer = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
             self?.player.seek(to: .zero); self?.player.play()
         }
-        player.replaceCurrentItem(with: item)
-        if shouldPlay { player.play() } else { player.pause() }
     }
 
     /// From a master playlist: the widest version not wider than `maxPixels`, and among those the highest bitrate.

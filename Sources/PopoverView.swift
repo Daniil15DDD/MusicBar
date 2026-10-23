@@ -24,6 +24,7 @@ struct HoverButtonStyle: ButtonStyle {
 struct PopoverView: View {
     @ObservedObject var media: MediaController
     @ObservedObject var audio: AudioLevels
+    @ObservedObject private var spotifyAuth = SpotifyAuth.shared
     var openSettings: () -> Void
     @AppStorage("showWaveform") private var showWaveform = true
     @StateObject private var scrubBox = Local<Double?>(nil)
@@ -82,8 +83,6 @@ struct PopoverView: View {
             Text(media.info?.player.displayName ?? "ORBT").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
             Spacer()
             headerButtons
-            Button(action: openSettings) { Image(systemName: "gearshape").foregroundStyle(.secondary) }
-                .buttonStyle(HoverButtonStyle(size: 24))
         }
     }
 
@@ -175,20 +174,27 @@ struct PopoverView: View {
         .disabled(media.info == nil)
     }
 
-    /// Favourite and equalizer (Apple Music only).
+    /// Favourite, equalizer (Apple Music only) and settings: one row, same size, weight and colour, evenly spaced.
     private var headerButtons: some View {
         let i = media.info
-        let isMusic = i?.player == .music
+        let musicOnly = i == nil || i?.player != .music
+        let spotify = i?.player == .spotify
+        let fav = i?.favorited == true
         return HStack(spacing: 2) {
-            Button { media.toggleFavorite() } label: { Image(systemName: i?.favorited == true ? "heart.fill" : "heart") }
-                .foregroundStyle(i?.favorited == true ? Color.pink : .secondary)
+            // Apple Music: heart. Spotify (once connected in the settings): the plus that becomes a green tick.
+            Button { media.toggleFavorite() } label: { Image(systemName: spotify ? (fav ? "checkmark.circle.fill" : "plus.circle") : (fav ? "heart.fill" : "heart")) }
+                .foregroundStyle(fav ? (spotify ? Color.green : Color.pink) : .secondary)
+                .disabled(i == nil || (!spotify && musicOnly) || (spotify && !spotifyAuth.connected))
             Button { eqBox.v.toggle() } label: { Image(systemName: "slider.vertical.3") }
                 .foregroundStyle(eqBox.v ? Color.accentColor : .secondary)
                 .help("Equalizer (Apple Music)")
+                .disabled(musicOnly)
+            Button(action: openSettings) { Image(systemName: "gearshape") }
+                .foregroundStyle(.secondary)
         }
-        .font(.system(size: 13))
+        .font(.system(size: 13, weight: .medium))
+        .imageScale(.medium)
         .buttonStyle(HoverButtonStyle(size: 26))
-        .disabled(i == nil || !isMusic)
     }
 
     private func fmt(_ s: Double) -> String {

@@ -41,13 +41,23 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 <br><br><sub>Rendered from the app's own views (the real lock screen shows your wallpaper and a glass blur behind the card).</sub>
 </div>
 
+In fullscreen, two buttons in the bottom-right corner open **lyrics** (time-synced, the current line big and bright, tap a line to jump there) or the **queue**. Either button can be hidden in Settings.
+
+<div align="center">
+<img src="assets/lockscreen-lyrics.png" width="720" alt="Lock screen lyrics view with the cover and player card on the left and synced lyrics on the right">
+<br><br>
+<img src="assets/lockscreen-queue.png" width="720" alt="Lock screen queue view listing the next songs">
+<br><sub>Both images use placeholder text, not real lyrics or songs.</sub>
+</div>
+
 ## Features
 
 - Real album art and an animated waveform in the menu bar
 - Compact player: seek bar, previous / play / next, shuffle, repeat
 - **Lock screen player** with a fullscreen mode and Apple's **moving artwork** (when the album has it)
+- **Lyrics** and **queue** on the fullscreen lock screen, each with a button you can hide in Settings
 - Favourite (star) and equalizer presets for Apple Music; optional Liquid Glass look on the lock screen (macOS 26+)
-- Works with **Apple Music** and **Spotify**
+- Works with **Apple Music** and **Spotify** (Spotify's real queue and a save button need an optional one-time connection, see below)
 - Light on resources (about 1% CPU while playing), no Dock icon, no audio recording
 
 ## Performance
@@ -55,10 +65,10 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 Built to stay out of the way. Measured with `top` on an Apple Silicon MacBook (macOS 27) while a song was playing, with the popover and lock screen closed:
 
 <div align="center">
-<img src="assets/performance.png" width="720" alt="About 1% CPU while playing, under 1% while paused, 43 MB memory">
+<img src="assets/performance.png" width="720" alt="About 1% CPU while playing, under 1% while paused, about 100 MB memory">
 </div>
 
-How: the waveform animates on the graphics side, the menu bar uses a small thumbnail of the cover, updates come from Music's own notifications, and the moving-artwork video only exists while the lock screen fullscreen is open. The video playing in fullscreen costs more, and I haven't measured that.
+How: the waveform animates on the graphics side, the menu bar uses a small thumbnail of the cover, updates come from Music's own notifications, and the moving-artwork video is only buffered while the Mac is locked (about +25 MB while it plays; the CPU and memory numbers above were not re-measured with it playing). The memory figure was measured with `top` after launch and includes the lock screen windows (about 24 MB of it).
 
 ## Install
 
@@ -71,7 +81,9 @@ Needs macOS 14.2+. To build it yourself instead: `git clone` this repo, then `./
 ## Good to know
 
 - The waveform is a lively animation, not a real audio analysis, so nothing is listened to. An optional setting makes it react to live audio (macOS then asks for audio-capture permission).
-- Favourite and equalizer are Apple Music only (Spotify has no like command in its scripting interface).
+- The equalizer is Apple Music only. Spotify's scripting interface has no like command and no queue, so those use Spotify's Web API, which is optional: create a free Spotify developer app (its owner needs Premium; Spotify limits such apps to 5 users), add the redirect URI `http://127.0.0.1/callback`, paste its Client ID in Settings and log in once. ORBT keeps the token in the Keychain. This is untested against a real Spotify account so far.
+- Lyrics come from [LRCLIB](https://lrclib.net), a free open database: it receives the song title, artist, album and length. Not every song has them.
+- The queue shows the next songs of the current Apple Music playlist. With shuffle on, Apple Music doesn't share what plays next, so "Recently played" is shown instead.
 - The lock screen player uses undocumented macOS window calls, because Apple offers no official way to draw there. A macOS update could break it. Turn it off in Settings if you prefer.
 - Moving artwork is read from Apple's public catalogue pages, which is unofficial. When an album has none, you get the normal cover.
 - No song info? Check System Settings → Privacy & Security → Automation.

@@ -19,6 +19,12 @@ final class PressButton: NSButton {
     }
 }
 
+extension CAMediaTimingFunction {
+    /// Things arriving start fast and settle gently; things leaving are the mirror image (slow start, quick finish).
+    static let arrive = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+    static let leave = CAMediaTimingFunction(controlPoints: 0.64, 0, 0.78, 0)
+}
+
 extension NSView {
     /// A scale transform about the view's CENTRE, whatever the layer's anchor point is (AppKit keeps resetting it,
     /// which made scale animations pivot around the bottom-left corner).
@@ -40,15 +46,17 @@ extension NSView {
     }
 
     /// Animates the view's scale to `s` (about its centre) and leaves it there: a spring, or a quick ease for the press-down.
-    func animateScale(to s: CGFloat, spring: Bool = true) {
+    func animateScale(to s: CGFloat, spring: Bool = true, from start: CGFloat? = nil) {
         guard let l = layer else { return }
-        let from = l.presentation()?.transform ?? l.transform
+        // always start from what is on screen right now, so a half-finished animation can be redirected without a jump
+        let from = start.map { scaled($0) } ?? l.presentation()?.transform ?? l.transform
         let to = scaled(s)
         l.transform = to
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return }
         if spring {
             let a = CASpringAnimation(keyPath: "transform")
             a.fromValue = NSValue(caTransform3D: from); a.toValue = NSValue(caTransform3D: to)
-            a.damping = 13; a.stiffness = 240; a.mass = 1
+            a.damping = 30; a.stiffness = 322; a.mass = 1   // response 0.35s, damping ratio 0.85: settles smoothly, the faintest overshoot
             a.duration = a.settlingDuration
             l.add(a, forKey: "scale")
         } else {
@@ -66,7 +74,7 @@ extension NSView {
         guard let l = layer else { return }
         let a = CABasicAnimation(keyPath: "opacity")
         a.fromValue = 0; a.toValue = target; a.duration = duration
-        a.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        a.timingFunction = .arrive
         l.add(a, forKey: "fadeIn")
     }
 
@@ -77,13 +85,72 @@ extension NSView {
         alphaValue = 0
         let a = CABasicAnimation(keyPath: "opacity")
         a.fromValue = from; a.toValue = 0; a.duration = duration
-        a.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        a.timingFunction = .leave
         l.add(a, forKey: "fadeOut")
     }
 
     func crossfade(_ d: CFTimeInterval = 0.25) {
         let t = CATransition(); t.type = .fade; t.duration = d
         layer?.add(t, forKey: "crossfade")
+    }
+}
+
+/// Our own "liquid glass": a light blur of what is behind the card (the system backdrop layer Apple's own panels use, with a
+/// small radius we choose), a faint white tint, a bright edge that fades round the card and a soft shine across the top.
+/// Apple's NSGlassEffectView only blurs heavily with a tint when hosted in a window like ours, so it looked flat grey.
+/// shortcut: uses the private CABackdropLayer / CAFilter classes; if they are missing it falls back to a plain translucent tint.
+final class GlassBackground: NSView {
+    private let radius: CGFloat
+    private var backdrop: CALayer?
+    private let tint = CALayer()
+    private let shine = CAGradientLayer()
+    private let edge = CAGradientLayer()
+    private let edgeMask = CAShapeLayer()
+
+    /// `tint` and `blur` default to the very clear lock screen card; the player menu passes a darker tint and a bit more blur for legibility.
+    init(frame: NSRect, radius: CGFloat, tint tintColor: NSColor? = nil, blur: CGFloat = 0.9) {
+        self.radius = radius
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = radius
+        layer?.masksToBounds = true
+
+        if let cls = NSClassFromString("CABackdropLayer") as? CALayer.Type, let fcls = NSClassFromString("CAFilter") as? NSObject.Type {
+            func filter(_ type: String, _ key: String, _ value: Any) -> NSObject? {
+                guard let f = fcls.perform(NSSelectorFromString("filterWithType:"), with: type)?.takeUnretainedValue() as? NSObject else { return nil }
+                f.setValue(value, forKey: key)
+                return f
+            }
+            let b = cls.init()
+            b.setValue(true, forKey: "windowServerAware")
+            b.setValue(UUID().uuidString, forKey: "groupName")
+            b.setValue(1.0, forKey: "scale")
+            b.filters = [filter("gaussianBlur", "inputRadius", blur), filter("colorSaturate", "inputAmount", 1.15)].compactMap { $0 }
+            layer?.addSublayer(b)
+            backdrop = b
+        }
+        tint.backgroundColor = (tintColor ?? NSColor.white.withAlphaComponent(backdrop == nil ? 0.05 : 0.012)).cgColor
+        layer?.addSublayer(tint)
+
+        shine.colors = [NSColor.white.withAlphaComponent(0.10).cgColor, NSColor.white.withAlphaComponent(0).cgColor]
+        shine.startPoint = CGPoint(x: 0.5, y: 1); shine.endPoint = CGPoint(x: 0.5, y: 0.55)   // top of the card is y = 1
+        layer?.addSublayer(shine)
+
+        edge.colors = [NSColor.white.withAlphaComponent(0.75).cgColor, NSColor.white.withAlphaComponent(0.10).cgColor, NSColor.white.withAlphaComponent(0.35).cgColor]
+        edge.startPoint = CGPoint(x: 0, y: 1); edge.endPoint = CGPoint(x: 1, y: 0)
+        edgeMask.fillColor = nil; edgeMask.strokeColor = NSColor.white.cgColor; edgeMask.lineWidth = 1.4
+        edge.mask = edgeMask
+        layer?.addSublayer(edge)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        [backdrop, tint, shine, edge].compactMap { $0 }.forEach { $0.frame = bounds }
+        edgeMask.frame = bounds
+        edgeMask.path = CGPath(roundedRect: bounds.insetBy(dx: 0.7, dy: 0.7), cornerWidth: radius, cornerHeight: radius, transform: nil)
+        CATransaction.commit()
     }
 }
 
@@ -173,18 +240,26 @@ final class WaveBarsView: NSView {
     private var bars: [CALayer] = []
     private var maxH: CGFloat = 14
     private let w: CGFloat = 2.5, gap: CGFloat = 2
-    private var timer: Timer?
+    /// Each bar has its own rhythm: a period and a loop of heights (fractions of the full height). Different periods mean the
+    /// bars never line up, which is what makes the motion read as organic instead of mechanical. It runs on the compositor.
+    private let rhythm: [(period: CFTimeInterval, heights: [CGFloat])] = [
+        (1.30, [0.40, 0.85, 0.55, 0.95, 0.35]),
+        (1.05, [0.65, 0.30, 0.90, 0.45, 0.75]),
+        (1.55, [0.90, 0.50, 1.00, 0.35, 0.70]),
+        (1.15, [0.35, 0.80, 0.45, 0.90, 0.60]),
+        (1.40, [0.70, 0.40, 0.85, 0.30, 0.95]),
+    ]
     /// Menu bar / popover: follow the system text colour (light or dark). Lock screen: always white.
     var adaptiveColor = false { didSet { applyColor() } }
-    var animating = false { didSet { if animating != oldValue { settle(); updateTimer() } } }
+    var animating = false { didSet { if animating != oldValue { apply() } } }
 
     override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-    deinit { timer?.invalidate() }
 
     override func layout() {
         super.layout()
         guard bounds.width > 0 else { return }
+        let changed = maxH != bounds.height
         maxH = bounds.height
         if bars.isEmpty {
             for _ in 0..<5 {
@@ -196,7 +271,8 @@ final class WaveBarsView: NSView {
                 bars.append(l)
             }
             applyColor()
-        }
+            apply()
+        } else if changed { apply() }
         var x = (bounds.width - (5 * w + 4 * gap)) / 2
         CATransaction.begin(); CATransaction.setDisableActions(true)
         for l in bars { l.position = CGPoint(x: x + w / 2, y: bounds.midY); x += w + gap }
@@ -204,36 +280,52 @@ final class WaveBarsView: NSView {
     }
 
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyColor() }
-    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); updateTimer() }
 
     private func applyColor() {
         let c: NSColor = adaptiveColor ? .labelColor : .white
         effectiveAppearance.performAsCurrentDrawingAppearance { bars.forEach { $0.backgroundColor = c.cgColor } }
     }
 
-    /// The bars animate on the compositor; this timer only picks new targets 3 times a second, and only while playing and on screen.
-    private func updateTimer() {
-        timer?.invalidate(); timer = nil
-        guard animating, window != nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in self?.step() }
-        t.tolerance = 0.1
-        timer = t
+    /// Playing: every bar loops through its own smooth curve. Stopping: each bar eases down from wherever it is (never jumps) to a dot.
+    private func apply() {
+        guard !bars.isEmpty else { return }
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        for (i, l) in bars.enumerated() {
+            let from = l.presentation()?.bounds.height ?? l.bounds.height
+            l.removeAnimation(forKey: "wave"); l.removeAnimation(forKey: "settle")
+            if animating {
+                let r = rhythm[i]
+                let values = (r.heights + [r.heights[0]]).map { max($0 * maxH, self.w) }
+                l.bounds = CGRect(x: 0, y: 0, width: w, height: values[0])
+                if !reduce {
+                    let a = CAKeyframeAnimation(keyPath: "bounds.size.height")
+                    a.values = values
+                    a.calculationMode = .cubic          // a smooth curve through the points, no corners
+                    a.duration = r.period
+                    a.repeatCount = .infinity
+                    l.add(a, forKey: "wave")
+                }
+                fade(l, to: 0.95)
+            } else {
+                l.bounds = CGRect(x: 0, y: 0, width: w, height: w)
+                if !reduce, from > w {
+                    let a = CASpringAnimation(keyPath: "bounds.size.height")
+                    a.fromValue = from; a.toValue = w
+                    a.mass = 1; a.stiffness = 200; a.damping = 28   // critically damped: no bounce, just a soft landing
+                    a.duration = a.settlingDuration
+                    l.add(a, forKey: "settle")
+                }
+                fade(l, to: 0.55)
+            }
+        }
     }
 
-    private func setHeight(_ l: CALayer, _ h: CGFloat) {
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.3)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
-        l.bounds = CGRect(x: 0, y: 0, width: w, height: h)
-        l.opacity = animating ? 0.95 : 0.55
-        CATransaction.commit()
-    }
-
-    private func settle() { bars.forEach { setHeight($0, animating ? maxH * 0.5 : w) } }
-
-    func step() {
-        guard animating else { return }
-        bars.forEach { setHeight($0, maxH * CGFloat.random(in: 0.3...1)) }
+    private func fade(_ l: CALayer, to o: Float) {
+        let from = l.presentation()?.opacity ?? l.opacity
+        l.opacity = o
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = from; a.toValue = o; a.duration = 0.4; a.timingFunction = .arrive
+        l.add(a, forKey: "fade")
     }
 }
 
@@ -280,13 +372,7 @@ final class LockCardView: NSView {
         tint.wantsLayer = true
         tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.14).cgColor
         tint.layer?.cornerRadius = 26
-        if #available(macOS 26.0, *) {
-            let g = NSGlassEffectView(frame: bounds)
-            g.cornerRadius = 26
-            g.style = .clear   // the clearer glass: you see the wallpaper through the card
-            if #available(macOS 27.0, *) { g.effectIsInteractive = true }
-            liquid = g
-        }
+        liquid = GlassBackground(frame: bounds, radius: 26)
 
         // Layout (origin bottom-left): cover top-left; progress row and controls sit below it with clear gaps.
         cover.frame = NSRect(x: 16, y: 69, width: 52, height: 52)
@@ -374,6 +460,10 @@ final class LockCardView: NSView {
         glass.isHidden = useLiquid
         tint.isHidden = useLiquid
         layer?.borderWidth = useLiquid ? 0 : 1
+        // a very clear card needs a soft dark shadow behind the text and controls to stay readable on bright wallpapers
+        let sh = NSShadow()
+        sh.shadowColor = NSColor.black.withAlphaComponent(0.45); sh.shadowBlurRadius = 5; sh.shadowOffset = .zero
+        [titleL, artistL, elapsedL, remainL, shuffleB, prevB, playB, nextB, repeatB, favB].forEach { $0.shadow = useLiquid ? sh : nil }
     }
 
     /// In fullscreen the big cover is already on screen: the small cover shrinks away and the text slides left into its place.
@@ -388,7 +478,7 @@ final class LockCardView: NSView {
 
     private func applyCover() {
         cover.animateScale(to: coverScale)
-        NSAnimationContext.runAnimationGroup { $0.duration = 0.35; self.cover.animator().alphaValue = self.coverAlpha }
+        NSAnimationContext.runAnimationGroup { $0.duration = 0.35; $0.timingFunction = .arrive; self.cover.animator().alphaValue = self.coverAlpha }
     }
 
     private func layoutTexts(animated: Bool) {
@@ -396,8 +486,8 @@ final class LockCardView: NSView {
         let tf = NSRect(x: x, y: 100, width: w, height: 18), af = NSRect(x: x, y: 82, width: w, height: 16)
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.35
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                ctx.duration = 0.45
+                ctx.timingFunction = .arrive   // a long gentle settle instead of a symmetric ease
                 self.titleL.animator().frame = tf
                 self.artistL.animator().frame = af
             }
@@ -417,7 +507,8 @@ final class LockCardView: NSView {
             cover.alphaValue = 1
             isHidden = false
             alphaValue = 0
-            NSAnimationContext.runAnimationGroup { $0.duration = 0.35; self.animator().alphaValue = 1 }
+            NSAnimationContext.runAnimationGroup { $0.duration = 0.45; $0.timingFunction = .arrive; self.animator().alphaValue = 1 }
+            animateScale(to: 1, from: 0.96)   // the card arrives: it rises into place as it fades in
             refresh()
             timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
                 self?.tick()
@@ -442,11 +533,13 @@ final class LockCardView: NSView {
         setSymbol(repeatB, repeatMode == "one" ? "repeat.1" : "repeat", 15)
         repeatB.contentTintColor = NSColor.white.withAlphaComponent(repeatMode != "off" ? 1 : 0.45)
         // favourite star: Apple Music only (Spotify's scripting has no like command), so it is hidden for Spotify
-        favB.isHidden = i?.player != .music
+        // Apple Music: the star. Spotify (when connected in the settings): the plus that becomes a green tick, like Spotify's own app.
+        let spotify = i?.player == .spotify
+        favB.isHidden = !(i?.player == .music || (spotify && SpotifyAuth.shared.connected))
         let fav = i?.favorited == true
         if fav != lastFav { if lastFav != nil { favB.crossfade(0.18) }; lastFav = fav }   // outline <-> filled fades
-        setSymbol(favB, fav ? "star.fill" : "star", 15)
-        favB.contentTintColor = NSColor.white.withAlphaComponent(fav ? 1 : 0.6)
+        setSymbol(favB, spotify ? (fav ? "checkmark.circle.fill" : "plus.circle") : (fav ? "star.fill" : "star"), 15)
+        favB.contentTintColor = spotify && fav ? NSColor(srgbRed: 0.114, green: 0.725, blue: 0.329, alpha: 1) : NSColor.white.withAlphaComponent(fav ? 1 : 0.6)
         if lastPlaying != playing {
             let animated = lastPlaying != nil
             lastPlaying = playing
@@ -512,6 +605,23 @@ final class LockBackdropView: ClickView {
     private weak var lastArt: NSImage?
     private var blurCache: (art: NSImage, image: CGImage?)?
     private var fadeToken = 0
+
+    // Lyrics and queue: two buttons in the bottom-right corner swap the cover for a list on the right (cover and card slide left).
+    enum Mode { case cover, lyrics, queue }
+    private(set) var mode: Mode = .cover
+    var onModeChange: ((Mode) -> Void)?
+    private let lyricsView = LyricsView(frame: .zero)
+    private let queueView = QueueView(frame: .zero)
+    private let modePill = NSView()
+    private let pillGlass = GlassBackground(frame: .zero, radius: 27, tint: NSColor.white.withAlphaComponent(0.08), blur: 5)
+    private let lyricsB = PressButton(), queueB = PressButton()
+    private let lyricsStore = LyricsStore()
+    private var lyricsTimer: Timer?
+    private var contentKey = ""
+    private var showLyricsButton: Bool { UserDefaults.standard.object(forKey: "showLyricsButton") as? Bool ?? true }
+    private var showQueueButton: Bool { UserDefaults.standard.object(forKey: "showQueueButton") as? Bool ?? true }
+    /// Left edge of the cover (and the card under it) while a list is open.
+    static func listColumnX(_ w: CGFloat) -> CGFloat { w * 0.12 }
     /// True while the Mac is locked: the moving artwork is looked up and its video buffered ahead of the click.
     var locked = false { didSet { if locked { warmUp() } } }
 
@@ -535,7 +645,19 @@ final class LockBackdropView: ClickView {
         video.maxPixels = 1920   // full-screen backdrop: sharper than the small popover video
         video.isHidden = true
         for l in [dateL, timeL, compactL] { l.alignment = .center; l.textColor = .white; l.lineBreakMode = .byClipping }
-        [wash, shade, video, bigShadow, big, dateL, timeL, compactL].forEach(addSubview)
+        [wash, shade, video, bigShadow, big, dateL, timeL, compactL, lyricsView, queueView, modePill].forEach(addSubview)
+        lyricsView.isHidden = true; queueView.isHidden = true
+        lyricsView.onSeek = { [weak media] t in media?.seek(to: t) }
+        queueView.onPlay = { [weak media] i in media?.playQueueItem(i) }
+        modePill.wantsLayer = true
+        modePill.addSubview(pillGlass)
+        for (b, symbol, action) in [(lyricsB, "quote.bubble", #selector(lyricsTap)), (queueB, "list.bullet", #selector(queueTap))] {
+            b.isBordered = false; b.imagePosition = .imageOnly; b.contentTintColor = .white
+            b.target = self; b.action = action
+            b.wantsLayer = true; b.layer?.cornerRadius = 23
+            b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 20, weight: .semibold))
+            modePill.addSubview(b)
+        }
         layoutContent()
 
         Publishers.Merge3(media.$info.map { _ in () }, media.$artwork.map { _ in () }, media.$motionURL.map { _ in () })
@@ -558,7 +680,6 @@ final class LockBackdropView: ClickView {
         guard locked, let url = media.motionURL, video.url != url else { return }
         video.load(url)   // buffers only; it plays when fullscreen opens
     }
-
     /// Builds the blurred colour wash off the main thread as soon as the artwork changes, so entering fullscreen doesn't stall.
     private func prepareBlur() {
         guard let art = media.artwork, blurCache?.art !== art else { return }
@@ -580,8 +701,11 @@ final class LockBackdropView: ClickView {
         let w = bounds.width, h = bounds.height
         // Liqoria layout: cover as wide as the card, its top ~29% down the screen, card ~72% down with a clear gap between.
         let side = LockCardView.size.width
-        big.frame = NSRect(x: (w - side) / 2, y: h * 0.71 - side, width: side, height: side)
+        big.frame = NSRect(x: mode == .cover ? (w - side) / 2 : Self.listColumnX(w), y: h * 0.71 - side, width: side, height: side)
         bigShadow.frame = big.frame
+        lyricsView.frame = NSRect(x: w * 0.46, y: h * 0.08, width: w * 0.46, height: h * 0.84)
+        queueView.frame = lyricsView.frame
+        layoutPill()
         // oversized so the blurred colours spread across the whole screen
         wash.frame = bounds.insetBy(dx: -w * 0.2, dy: -h * 0.2)
         [shade, video].forEach { $0.frame = bounds }
@@ -592,10 +716,154 @@ final class LockBackdropView: ClickView {
         compactL.frame = NSRect(x: 0, y: h * 0.902 - 14, width: w, height: 28)
     }
 
+    /// The corner buttons for lyrics and queue, each of which can be switched off in the settings.
+    private func layoutPill() {
+        let showL = showLyricsButton, showQ = showQueueButton
+        lyricsB.isHidden = !showL; queueB.isHidden = !showQ
+        modePill.isHidden = !showL && !showQ
+        let visible = [(lyricsB, showL), (queueB, showQ)].filter { $0.1 }.map { $0.0 }
+        let bw: CGFloat = 46, pad: CGFloat = 8, hgt: CGFloat = 54
+        let pw = pad * 2 + bw * CGFloat(visible.count) + (visible.count > 1 ? 4 : 0)
+        modePill.frame = NSRect(x: bounds.width - pw - 36, y: 36, width: pw, height: hgt)
+        pillGlass.frame = modePill.bounds
+        for (k, b) in visible.enumerated() { b.frame = NSRect(x: pad + CGFloat(k) * (bw + 4), y: (hgt - bw) / 2, width: bw, height: bw) }
+        updatePillSelection(animated: false)
+    }
+
+    private func updatePillSelection(animated: Bool) {
+        for (b, on) in [(lyricsB, mode == .lyrics), (queueB, mode == .queue)] {
+            guard let l = b.layer else { continue }
+            let to = (on ? NSColor.white.withAlphaComponent(0.24) : NSColor.clear).cgColor
+            let from = l.presentation()?.backgroundColor ?? l.backgroundColor
+            l.backgroundColor = to
+            if animated { let a = CABasicAnimation(keyPath: "backgroundColor"); a.fromValue = from; a.toValue = to; a.duration = 0.3; a.timingFunction = .arrive; l.add(a, forKey: "sel") }
+        }
+    }
+
+    @objc private func lyricsTap() { setMode(mode == .lyrics ? .cover : .lyrics) }
+    @objc private func queueTap() { setMode(mode == .queue ? .cover : .queue) }
+
+    /// Cover <-> lyrics <-> queue. The cover (when it is a plain image) and the card slide to the left column while the list fades
+    /// and rises in on the right; the clock gets out of the way and the picture darkens a little so the text stays readable.
+    func setMode(_ m: Mode) {
+        guard m != mode else { return }
+        let old = mode
+        mode = m
+        let w = bounds.width, h = bounds.height, side = LockCardView.size.width
+        let list = m != .cover
+        let target = NSRect(x: list ? Self.listColumnX(w) : (w - side) / 2, y: h * 0.71 - side, width: side, height: side)
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = reduce ? 0.2 : 0.65; ctx.timingFunction = .arrive
+            self.big.animator().frame = target; self.bigShadow.animator().frame = target
+            [self.dateL, self.timeL, self.compactL].forEach { $0.animator().alphaValue = list ? 0 : 1 }
+            self.shade.animator().alphaValue = self.shadeLevel
+        }
+        let outgoing: NSView? = old == .lyrics ? lyricsView : old == .queue ? queueView : nil
+        let incoming: NSView? = m == .lyrics ? lyricsView : m == .queue ? queueView : nil
+        if let o = outgoing, o !== incoming {
+            NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.25; ctx.timingFunction = .leave; o.animator().alphaValue = 0 },
+                                                 completionHandler: { [weak self] in if self?.mode == .cover || (o === self?.lyricsView ? self?.mode != .lyrics : self?.mode != .queue) { o.isHidden = true } })
+        }
+        if let i = incoming {
+            i.isHidden = false
+            i.layer?.removeAllAnimations()
+            i.alphaValue = 1
+            if !reduce {
+                let g = CAAnimationGroup()
+                let o = CABasicAnimation(keyPath: "opacity"); o.fromValue = 0; o.toValue = 1
+                let t = CABasicAnimation(keyPath: "transform.translation.x"); t.fromValue = 40; t.toValue = 0
+                g.animations = [o, t]; g.duration = 0.6; g.timingFunction = .arrive
+                i.layer?.add(g, forKey: "in")
+            }
+            reloadContent()
+        }
+        lyricsTimer?.invalidate(); lyricsTimer = nil
+        if m == .lyrics {
+            let t = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tickLyrics() }
+            t.tolerance = 0.03
+            lyricsTimer = t
+        }
+        updatePillSelection(animated: true)
+        onModeChange?(m)
+    }
+
+    /// README images only: opens a list with sample content, without animation. The glass can't render offscreen, so the pill is flat.
+    func previewList(_ m: Mode, lyrics: [LyricLine], queue: [QueueItem]) {
+        mode = m
+        layoutContent()
+        lyricsView.isHidden = m != .lyrics; queueView.isHidden = m != .queue
+        [dateL, timeL, compactL].forEach { $0.alphaValue = 0 }
+        shade.alphaValue = shadeLevel
+        pillGlass.isHidden = true
+        modePill.layer?.cornerRadius = 27
+        modePill.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        updatePillSelection(animated: false)
+        if m == .lyrics { lyricsView.set(.synced(lyrics)); lyricsView.setPosition(lyrics.count > 2 ? lyrics[2].time : 0) } else { queueView.set(queue) }
+    }
+
+    /// Back to the plain cover without animation (entering and leaving fullscreen, unlock).
+    func resetMode() {
+        mode = .cover
+        lyricsTimer?.invalidate(); lyricsTimer = nil
+        lyricsView.isHidden = true; queueView.isHidden = true
+        lyricsView.clear(); queueView.clear()
+        contentKey = ""
+        layoutContent()
+    }
+
+    private func tickLyrics() {
+        guard mode == .lyrics, let i = media.info else { return }
+        lyricsView.setPosition(i.position + (i.isPlaying ? Date().timeIntervalSince(media.sampleDate) : 0))
+    }
+
+    /// Loads what the open list shows for the song that is playing now.
+    private func reloadContent() {
+        guard let i = media.info else {
+            (mode == .lyrics ? lyricsView.showMessage("Nothing is playing") : queueView.showMessage("Nothing is playing"))
+            return
+        }
+        let key = i.key + (i.shuffle ? "|s" : "")
+        contentKey = key
+        if mode == .lyrics {
+            var answered = false
+            lyricsStore.load(i) { [weak self] r in
+                answered = true
+                guard let self, self.mode == .lyrics, self.contentKey == key else { return }
+                self.lyricsView.set(r)
+            }
+            if !answered { lyricsView.showMessage("Loading lyrics…") }
+        } else if mode == .queue {
+            if i.player == .spotify && !SpotifyAuth.shared.connected { queueView.showMessage("Connect Spotify in ORBT's settings to see its queue"); return }
+            // Music plays a shuffled order it doesn't share with other apps; the playlist order would show the WRONG songs,
+            // so what ORBT has seen play is shown instead (history, not the future)
+            if i.player == .music && i.shuffle {
+                queueView.setHeader("Recently played")
+                queueView.playable = false
+                let seen = media.recent
+                if seen.isEmpty { queueView.showMessage("Apple Music doesn't share the shuffled queue. Songs you play will show up here.") } else { queueView.clear(); queueView.set(seen) }
+                return
+            }
+            queueView.setHeader("Up Next")
+            queueView.playable = i.player == .music
+            queueView.clear()
+            media.loadQueue { [weak self] items in
+                guard let self, self.mode == .queue, self.contentKey == key else { return }
+                self.queueView.set(items)
+            }
+        }
+    }
+
+    private var shadeLevel: CGFloat {
+        let motion = media.motionURL != nil
+        return mode == .cover ? (motion ? 0.15 : 0.22) : (motion ? 0.45 : 0.3)
+    }
+
     /// Instant hide (on unlock and when leaving fullscreen).
     func setActive(_ on: Bool, keepVideo: Bool = false) {
         timer?.invalidate(); timer = nil
         guard !on else { return }
+        resetMode()
         isHidden = true
         alphaValue = 1
         if keepVideo { video.pause() } else { video.stop() }   // keep it buffered while still locked
@@ -603,7 +871,7 @@ final class LockBackdropView: ClickView {
         lastPlaying = nil
     }
 
-    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, dateL, timeL, compactL] }
+    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, dateL, timeL, compactL, modePill] }
 
     /// README image only: a still frame of the moving artwork stands in for the video (an AVPlayer can't render offscreen).
     func previewMotionStill(_ img: NSImage) {
@@ -621,6 +889,7 @@ final class LockBackdropView: ClickView {
     func show() {
         fadeToken += 1
         timer?.invalidate()
+        resetMode()
         let playing = media.info?.isPlaying == true
         lastPlaying = playing   // so refresh() doesn't animate the paused look itself; it is applied below
         fadingViews.forEach { $0.layer?.removeAllAnimations() }
@@ -635,8 +904,10 @@ final class LockBackdropView: ClickView {
         fadingViews.forEach { $0.alphaValue = 0 }
         CATransaction.flush()   // finish the heavy first draw while invisible, so the fades below start on a ready screen
         [big, bigShadow].forEach { $0.fadeIn(to: imageAlpha, duration: 0.25) }
+        let k: CGFloat = playing ? 1 : 0.9
+        [big, bigShadow].forEach { $0.animateScale(to: k, from: k * 0.94) }   // the cover settles into place instead of just appearing
         video.fadeIn(to: imageAlpha, duration: 0.8)
-        [wash, dateL, timeL, compactL].forEach { $0.fadeIn(to: 1, duration: 0.8) }
+        [wash, dateL, timeL, compactL, modePill].forEach { $0.fadeIn(to: 1, duration: 0.8) }
         shade.fadeIn(to: shadeTarget, duration: 0.8)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateClock() }
     }
@@ -652,7 +923,7 @@ final class LockBackdropView: ClickView {
             self.setActive(false, keepVideo: true)
         }
         [big, bigShadow].forEach { $0.fadeOut(duration: 0.25) }
-        [video, wash, shade, dateL, timeL, compactL].forEach { $0.fadeOut(duration: 0.5) }
+        [video, wash, shade, dateL, timeL, compactL, modePill, lyricsView, queueView].forEach { $0.fadeOut(duration: 0.5) }
         CATransaction.commit()
     }
 
@@ -672,12 +943,13 @@ final class LockBackdropView: ClickView {
             let scale: CGFloat = playing ? 1 : 0.9, alpha: CGFloat = playing ? 1 : 0.62
             if animated { big.animateScale(to: scale); bigShadow.animateScale(to: scale) }
             else { big.layer?.transform = big.scaled(scale); bigShadow.layer?.transform = bigShadow.scaled(scale) }
-            NSAnimationContext.runAnimationGroup { $0.duration = 0.3; self.big.animator().alphaValue = alpha; self.bigShadow.animator().alphaValue = alpha; self.video.animator().alphaValue = alpha }
+            NSAnimationContext.runAnimationGroup { $0.duration = 0.35; $0.timingFunction = .arrive; self.big.animator().alphaValue = alpha; self.bigShadow.animator().alphaValue = alpha; self.video.animator().alphaValue = alpha }
         }
         timeL.isHidden = motion == nil
         dateL.isHidden = motion == nil
         compactL.isHidden = motion != nil
-        shade.alphaValue = motion != nil ? 0.15 : 0.22
+        shade.alphaValue = shadeLevel
+        if mode != .cover, let i = media.info, contentKey != i.key + (i.shuffle ? "|s" : "") { reloadContent() }   // the song changed under an open list
         if media.artwork !== lastArt {
             lastArt = media.artwork
             let cg = media.artwork?.cgImage(forProposedRect: nil, context: nil, hints: nil)
@@ -780,6 +1052,7 @@ final class LockScreenController {
 
         card.onCoverTap = { [weak self] in self?.setFullscreen(!(self?.fullscreen ?? false)) }
         backdrop.onClick = { [weak self] in self?.setFullscreen(false) }
+        backdrop.onModeChange = { [weak self] m in self?.moveCard(toList: m != .cover, animated: true) }
         tokens.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in self?.place() })
         let dnc = DistributedNotificationCenter.default()
         tokens.append(dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in self?.show() })
@@ -808,6 +1081,18 @@ final class LockScreenController {
 
     deinit { tokens.forEach { DistributedNotificationCenter.default().removeObserver($0) } }
 
+    /// The card sits under the cover: centred normally, in the left column while lyrics or the queue are open.
+    private func moveCard(toList: Bool, animated: Bool) {
+        let f = NSScreen.main?.frame ?? .zero
+        let x = toList ? f.minX + LockBackdropView.listColumnX(f.width) : f.midX - LockCardView.size.width / 2
+        let target = NSRect(origin: NSPoint(x: x, y: cardPanel.frame.origin.y), size: cardPanel.frame.size)
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { cardPanel.setFrame(target, display: true); return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.65; ctx.timingFunction = .arrive
+            self.cardPanel.animator().setFrame(target, display: true)
+        }
+    }
+
     private func setFullscreen(_ on: Bool) {
         guard on != fullscreen else { return }
         fullscreen = on
@@ -818,6 +1103,7 @@ final class LockScreenController {
         } else {
             backdropPanel.ignoresMouseEvents = true
             backdrop.fadeOutAndHide()
+            moveCard(toList: false, animated: true)
         }
         card.setFullscreen(on)
     }
@@ -837,6 +1123,7 @@ final class LockScreenController {
         fullscreen = false
         backdrop.locked = false
         backdrop.setActive(false)               // instant, no animation, on unlock
+        moveCard(toList: false, animated: false)
         backdropPanel.ignoresMouseEvents = true
         card.setActive(false)   // hides the card and stops its timers
         cardPanel.ignoresMouseEvents = true

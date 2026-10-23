@@ -27,8 +27,8 @@ struct MenuBarContent: View {
                         .scaleEffect(pulse.v)
                 }
                 if !info.isPlaying {
-                    Image(systemName: "pause.fill").font(.system(size: 11)).frame(width: 16, height: 12)
-                        .transition(.opacity.combined(with: .scale(scale: 0.5)))
+                    Image(systemName: "pause.fill").font(.system(size: 10, weight: .semibold)).frame(width: 16, height: 12)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 } else if showWaveform {
                     WaveformView(isAnimating: info.isPlaying, levels: audio.running && audio.live ? audio.levels : nil, bpm: info.bpm, seed: info.seed, barWidth: 2, spacing: 2)
                         .frame(width: 16, height: 12)
@@ -40,7 +40,7 @@ struct MenuBarContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeOut(duration: 0.15), value: media.info?.isPlaying)
+        .animation(.smooth(duration: 0.35), value: media.info?.isPlaying)
         .onChange(of: media.info?.isPlaying) { _, _ in pulse.press() }
     }
 

@@ -123,7 +123,7 @@ enum Demo {
                 HStack(spacing: 28) {
                     stat("~1%", "CPU while playing")
                     stat("<1%", "CPU while paused")
-                    stat("43 MB", "memory")
+                    stat("~100 MB", "memory")
                 }
                 Text("Measured with top on an Apple Silicon MacBook, macOS 27, popover and lock screen closed.")
                     .font(.system(size: 20)).foregroundStyle(.white.opacity(0.6))
@@ -138,6 +138,8 @@ enum Demo {
         if let lock, let lockArt = lockArtPath.flatMap({ NSImage(contentsOfFile: $0) }) {
             save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true), dir.appendingPathComponent("lockscreen-fullscreen.png"))
             save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: false), dir.appendingPathComponent("lockscreen-card.png"))
+            save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, list: .lyrics), dir.appendingPathComponent("lockscreen-lyrics.png"))
+            save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, list: .queue), dir.appendingPathComponent("lockscreen-queue.png"))
             if let still = lockMotionPath.flatMap({ NSImage(contentsOfFile: $0) }) {
                 save(renderLock(MediaController(demo: lock, artwork: lockArt), fullscreen: true, motionStill: still), dir.appendingPathComponent("lockscreen-moving.png"))
             }
@@ -146,7 +148,7 @@ enum Demo {
 
     /// Renders the lock screen card (and, for fullscreen, the backdrop) offscreen. The glass blur and the user's wallpaper
     /// are not available offscreen, so a soft gradient stands in for the wallpaper.
-    static func renderLock(_ m: MediaController, fullscreen: Bool, motionStill: NSImage? = nil, size: NSSize = NSSize(width: 1440, height: 900)) -> NSImage? {
+    static func renderLock(_ m: MediaController, fullscreen: Bool, motionStill: NSImage? = nil, list: LockBackdropView.Mode? = nil, size: NSSize = NSSize(width: 1440, height: 900)) -> NSImage? {
         let root = NSView(frame: NSRect(origin: .zero, size: size))
         root.wantsLayer = true
         let wallpaper = CAGradientLayer()
@@ -156,11 +158,18 @@ enum Demo {
         let win = NSWindow(contentRect: root.bounds, styleMask: .borderless, backing: .buffered, defer: false)
         win.contentView = root
         let card = LockCardView(media: m)
-        card.frame.origin = NSPoint(x: (size.width - LockCardView.size.width) / 2, y: size.height * 0.22 - LockCardView.size.height / 2)
+        card.frame.origin = NSPoint(x: list == nil ? (size.width - LockCardView.size.width) / 2 : LockBackdropView.listColumnX(size.width), y: size.height * 0.22 - LockCardView.size.height / 2)
         if fullscreen {
             let backdrop = LockBackdropView(media: m, frame: root.bounds)
             root.addSubview(backdrop)
             if let motionStill { backdrop.previewMotionStill(motionStill) } else { backdrop.show() }
+            if let list {
+                // placeholder text, not real lyrics
+                let sample = ["Every line arrives right on time", "The current one is big and bright", "The ones around it slip away", "Soft and blurred, out of the way", "Tap any line to jump right there", "And the list scrolls itself along"]
+                let lyrics = sample.enumerated().map { LyricLine(time: Double($0.offset) * 4, text: $0.element) }
+                let queue = (1...7).map { QueueItem(index: $0, number: $0, title: ["Golden Hour", "Midnight Drive", "Paper Planes", "Slow Motion", "Afterglow", "Northern Lights", "Hold On"][$0 - 1], artist: ["The Waves", "Night Signals", "Lowlight", "Paper Kites", "Harbour", "Aurora Sound", "Lake & Co"][$0 - 1], duration: 180 + Double($0 * 17)) }
+                backdrop.previewList(list, lyrics: lyrics, queue: queue)
+            }
         } else {
             // the system clock the real lock screen shows above the card
             let t = NSTextField(labelWithString: "9:41")
