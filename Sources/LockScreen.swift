@@ -158,23 +158,22 @@ final class GlassBackground: NSView {
         l.contentsGravity = .resizeAspectFill
         layer?.insertSublayer(l, at: 0)
         snap = l
-        tint.backgroundColor = NSColor.black.withAlphaComponent(0.06).cgColor
-        needsLayout = true
+        needsLayout = true   // the tint stays at the live glass's own (almost invisible) value
     }
 
-    /// The part of `full` (the whole picture, bottom-left origin, `scale` pixels per point) under `rect`, the way real Liquid Glass shows it:
-    /// clear and sharp, not blurred, only a touch magnified (the glass is a lens) and a little more vivid and brighter.
+    /// The part of `full` (the whole picture, bottom-left origin, `scale` pixels per point) under `rect`, with the same two filters the live
+    /// glass uses (a 0.9 gaussian blur and a 1.15 saturation boost), so the README card matches the real one: almost perfectly clear.
     static func glassCrop(_ full: CGImage, rect: NSRect, scale: CGFloat) -> CGImage? {
         let img = CIImage(cgImage: full)
         let crop = CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)
-        let inner = crop.insetBy(dx: crop.width * 0.03, dy: crop.height * 0.045)   // the middle 94%, stretched to fill: ~6% magnification
-        guard let color = CIFilter(name: "CIColorControls") else { return nil }
-        let zoom = CGAffineTransform(translationX: -inner.minX, y: -inner.minY).concatenating(CGAffineTransform(scaleX: crop.width / inner.width, y: crop.height / inner.height))
-        color.setValue(img.cropped(to: inner).transformed(by: zoom), forKey: kCIInputImageKey)
-        color.setValue(1.18, forKey: kCIInputSaturationKey)
-        color.setValue(0.045, forKey: kCIInputBrightnessKey)
-        guard let out = color.outputImage else { return nil }
-        return ci.createCGImage(out, from: CGRect(origin: .zero, size: crop.size))
+        guard let blur = CIFilter(name: "CIGaussianBlur"), let color = CIFilter(name: "CIColorControls") else { return nil }
+        blur.setValue(img.clampedToExtent(), forKey: kCIInputImageKey)
+        blur.setValue(0.9 * scale, forKey: kCIInputRadiusKey)
+        guard let soft = blur.outputImage else { return nil }
+        color.setValue(soft, forKey: kCIInputImageKey)
+        color.setValue(1.15, forKey: kCIInputSaturationKey)
+        guard let out = color.outputImage?.cropped(to: crop) else { return nil }
+        return ci.createCGImage(out, from: crop)
     }
 
     override func layout() {
