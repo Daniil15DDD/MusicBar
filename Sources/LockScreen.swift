@@ -470,7 +470,7 @@ final class LockCardView: NSView {
 
     /// Frosted glass (default) or real Liquid Glass, per the setting.
     private func applyStyle() {
-        let useLiquid = liquid != nil && UserDefaults.standard.bool(forKey: "lockLiquidGlass")
+        let useLiquid = liquid != nil && (UserDefaults.standard.object(forKey: "lockLiquidGlass") as? Bool ?? true)   // Liquid Glass unless switched off
         liquid?.isHidden = !useLiquid
         glass.isHidden = useLiquid
         tint.isHidden = useLiquid

@@ -56,7 +56,7 @@ In fullscreen, two buttons in the bottom-right corner open **lyrics** (time-sync
 - Compact player: seek bar, previous / play / next, shuffle, repeat
 - **Lock screen player** with a fullscreen mode and Apple's **moving artwork** (when the album has it)
 - **Lyrics** and **queue** on the fullscreen lock screen, each with a button you can hide in Settings
-- Favourite (star) and equalizer presets for Apple Music; optional Liquid Glass look on the lock screen (macOS 26+)
+- Favourite (star) and equalizer presets for Apple Music; the lock screen card uses a Liquid Glass look by default (switch to a frosted look in Settings)
 - Works with **Apple Music** and **Spotify** (Spotify's real queue and a save button need an optional one-time connection, see below)
 - Light on resources (about 1% CPU while playing), no Dock icon, no audio recording
 

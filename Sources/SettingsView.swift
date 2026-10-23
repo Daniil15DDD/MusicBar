@@ -9,7 +9,7 @@ struct SettingsView: View {
     @AppStorage("fallback") private var fallback = "icon"
     @AppStorage("reactiveAudio") private var reactiveAudio = false
     @AppStorage("lockScreenPlayer") private var lockScreenPlayer = true
-    @AppStorage("lockLiquidGlass") private var lockLiquidGlass = false
+    @AppStorage("lockLiquidGlass") private var lockLiquidGlass = true
     @AppStorage("showLyricsButton") private var showLyricsButton = true
     @AppStorage("showQueueButton") private var showQueueButton = true
     @AppStorage("spotifyClientID") private var spotifyClientID = ""
