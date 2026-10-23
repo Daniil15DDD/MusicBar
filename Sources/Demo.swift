@@ -107,7 +107,7 @@ enum Demo {
 
         func stat(_ big: String, _ label: String) -> some View {
             VStack(spacing: 10) {
-                Text(big).font(.system(size: 92, weight: .bold, design: .rounded))
+                Text(big).font(.system(size: 92, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.5).padding(.horizontal, 18)
                 Text(label).font(.system(size: 24, weight: .medium)).foregroundStyle(.white.opacity(0.75))
             }
             .frame(width: 330, height: 220)

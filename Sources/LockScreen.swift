@@ -144,6 +144,13 @@ final class GlassBackground: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// README images only: the blur layer can't render offscreen (it comes out white), so it is left out and the tint is a little
+    /// stronger to stand in for the blur; the shine and the bright edge stay, so it still reads as glass.
+    func hideBlurForScreenshots() {
+        backdrop?.isHidden = true
+        tint.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+    }
+
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -447,10 +454,18 @@ final class LockCardView: NSView {
     func useFlatBackgroundForScreenshots(fullscreen on: Bool) {
         if on { fullscreen = true; layoutTexts(animated: false); cover.alphaValue = 0 }   // small cover away, text slid left, instantly
         glass.isHidden = true
-        liquid?.isHidden = true
-        tint.isHidden = false
-        tint.layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.42).cgColor   // see-through, like the glass
-        layer?.borderWidth = 1
+        tint.isHidden = true
+        liquid?.isHidden = false
+        (liquid as? GlassBackground)?.hideBlurForScreenshots()
+        layer?.borderWidth = 0
+        applyTextShadow(true)
+    }
+
+    /// A very clear card needs a soft dark shadow behind the text and controls to stay readable on bright wallpapers.
+    private func applyTextShadow(_ on: Bool) {
+        let sh = NSShadow()
+        sh.shadowColor = NSColor.black.withAlphaComponent(0.45); sh.shadowBlurRadius = 5; sh.shadowOffset = .zero
+        [titleL, artistL, elapsedL, remainL, shuffleB, prevB, playB, nextB, repeatB, favB].forEach { $0.shadow = on ? sh : nil }
     }
 
     /// Frosted glass (default) or real Liquid Glass, per the setting.
