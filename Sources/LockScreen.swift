@@ -148,7 +148,7 @@ final class GlassBackground: NSView {
     private static let ci = CIContext()
 
     /// README images only: the live blur layer can't render offscreen (it comes out white), so a picture of what lies behind the glass
-    /// (already blurred, see blurredCrop) takes its place; the tint, the shine and the bright edge stay on top.
+    /// (see glassCrop) takes its place; the tint, the shine and the bright edge stay on top.
     func setScreenshotBackdrop(_ img: CGImage?) {
         backdrop?.isHidden = true
         snap?.removeFromSuperlayer(); snap = nil
@@ -162,21 +162,19 @@ final class GlassBackground: NSView {
         needsLayout = true
     }
 
-    /// The part of `full` (the whole picture, bottom-left origin, `scale` pixels per point) under `rect`, softly blurred, vivid and a
-    /// little brighter: what real Liquid Glass shows of the world behind it.
-    static func blurredCrop(_ full: CGImage, rect: NSRect, scale: CGFloat) -> CGImage? {
+    /// The part of `full` (the whole picture, bottom-left origin, `scale` pixels per point) under `rect`, the way real Liquid Glass shows it:
+    /// clear and sharp, not blurred, only a touch magnified (the glass is a lens) and a little more vivid and brighter.
+    static func glassCrop(_ full: CGImage, rect: NSRect, scale: CGFloat) -> CGImage? {
         let img = CIImage(cgImage: full)
         let crop = CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)
-        guard let blur = CIFilter(name: "CIGaussianBlur"), let color = CIFilter(name: "CIColorControls") else { return nil }
-        blur.setValue(img.clampedToExtent(), forKey: kCIInputImageKey)
-        blur.setValue(9 * scale, forKey: kCIInputRadiusKey)
-        guard let blurred = blur.outputImage else { return nil }
-        color.setValue(blurred, forKey: kCIInputImageKey)
-        color.setValue(1.55, forKey: kCIInputSaturationKey)
-        color.setValue(0.07, forKey: kCIInputBrightnessKey)
-        color.setValue(1.08, forKey: kCIInputContrastKey)
-        guard let out = color.outputImage?.cropped(to: crop) else { return nil }
-        return ci.createCGImage(out, from: crop)
+        let inner = crop.insetBy(dx: crop.width * 0.03, dy: crop.height * 0.045)   // the middle 94%, stretched to fill: ~6% magnification
+        guard let color = CIFilter(name: "CIColorControls") else { return nil }
+        let zoom = CGAffineTransform(translationX: -inner.minX, y: -inner.minY).concatenating(CGAffineTransform(scaleX: crop.width / inner.width, y: crop.height / inner.height))
+        color.setValue(img.cropped(to: inner).transformed(by: zoom), forKey: kCIInputImageKey)
+        color.setValue(1.18, forKey: kCIInputSaturationKey)
+        color.setValue(0.045, forKey: kCIInputBrightnessKey)
+        guard let out = color.outputImage else { return nil }
+        return ci.createCGImage(out, from: CGRect(origin: .zero, size: crop.size))
     }
 
     override func layout() {
@@ -484,7 +482,7 @@ final class LockCardView: NSView {
         glass.isHidden = true
         tint.isHidden = true
         liquid?.isHidden = false
-        (liquid as? GlassBackground)?.setScreenshotBackdrop(snapshot.flatMap { GlassBackground.blurredCrop($0, rect: frame, scale: 2) })
+        (liquid as? GlassBackground)?.setScreenshotBackdrop(snapshot.flatMap { GlassBackground.glassCrop($0, rect: frame, scale: 2) })
         layer?.borderWidth = 0
         applyTextShadow(true)
     }
@@ -834,7 +832,7 @@ final class LockBackdropView: ClickView {
     /// README images only: the corner buttons' glass gets the blurred picture behind it (see GlassBackground.setScreenshotBackdrop).
     func applyScreenshotGlass(_ full: CGImage) {
         guard !modePill.isHidden else { return }
-        pillGlass.setScreenshotBackdrop(GlassBackground.blurredCrop(full, rect: modePill.frame, scale: 2))
+        pillGlass.setScreenshotBackdrop(GlassBackground.glassCrop(full, rect: modePill.frame, scale: 2))
     }
 
     /// README images only: opens a list with sample content, without animation.

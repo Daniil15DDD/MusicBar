@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/hero.png?v=4" alt="ORBT: album cover and waveform in the macOS menu bar" width="100%">
+<img src="assets/hero.png?v=5" alt="ORBT: album cover and waveform in the macOS menu bar" width="100%">
 
 <img src="assets/icon.png" width="128" alt="ORBT icon">
 
@@ -25,7 +25,7 @@ macOS shows a plain icon for Now Playing. ORBT shows the **real cover** instead,
 <img src="assets/menubar-paused.png" width="560" alt="Paused">
 <br><sub>Playing · Paused</sub>
 <br><br>
-<img src="assets/popover.png?v=4" width="360" alt="The player popover">
+<img src="assets/popover.png?v=5" width="360" alt="The player popover">
 </div>
 
 ## On the lock screen
@@ -33,10 +33,10 @@ macOS shows a plain icon for Now Playing. ORBT shows the **real cover** instead,
 A player card sits above the macOS lock screen: cover, title, seek bar, shuffle / previous / play / next / repeat and a favourite star. Click the small cover for fullscreen: a big cover with a soft colour wash, or, when Apple has made **moving artwork** for the album, the video fills the whole screen.
 
 <div align="center">
-<img src="assets/lockscreen-fullscreen.png?v=4" width="720" alt="Lock screen fullscreen with the big cover and the player card">
+<img src="assets/lockscreen-fullscreen.png?v=5" width="720" alt="Lock screen fullscreen with the big cover and the player card">
 <br><sub>Static cover: the big cover with a colour wash.</sub>
 <br><br>
-<img src="assets/lockscreen-moving.png?v=4" width="720" alt="Lock screen fullscreen with Apple's moving artwork filling the screen">
+<img src="assets/lockscreen-moving.png?v=5" width="720" alt="Lock screen fullscreen with Apple's moving artwork filling the screen">
 <br><sub>Moving artwork: the video fills the screen (a still frame is shown here).</sub>
 <br><br><sub>Rendered from the app's own views (the real lock screen shows your wallpaper and a glass blur behind the card).</sub>
 </div>
@@ -44,9 +44,9 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 In fullscreen, two buttons in the bottom-right corner open **lyrics** (time-synced, the current line big and bright, tap a line to jump there) or the **queue**. Either button can be hidden in Settings.
 
 <div align="center">
-<img src="assets/lockscreen-lyrics.png?v=4" width="720" alt="Lock screen lyrics view with the cover and player card on the left and synced lyrics on the right">
+<img src="assets/lockscreen-lyrics.png?v=5" width="720" alt="Lock screen lyrics view with the cover and player card on the left and synced lyrics on the right">
 <br><br>
-<img src="assets/lockscreen-queue.png?v=4" width="720" alt="Lock screen queue view listing the next songs">
+<img src="assets/lockscreen-queue.png?v=5" width="720" alt="Lock screen queue view listing the next songs">
 <br><sub>Both images use placeholder text, not real lyrics or songs.</sub>
 </div>
 
@@ -65,7 +65,7 @@ In fullscreen, two buttons in the bottom-right corner open **lyrics** (time-sync
 Built to stay out of the way. Measured with `top` on an Apple Silicon MacBook (macOS 27) while a song was playing, with the popover and lock screen closed:
 
 <div align="center">
-<img src="assets/performance.png?v=4" width="720" alt="About 1% CPU while playing, under 1% while paused, about 100 MB memory">
+<img src="assets/performance.png?v=5" width="720" alt="About 1% CPU while playing, under 1% while paused, about 100 MB memory">
 </div>
 
 How: the waveform animates on the graphics side, the menu bar uses a small thumbnail of the cover, updates come from Music's own notifications, and the moving-artwork video is only buffered while the Mac is locked (about +25 MB while it plays; the CPU and memory numbers above were not re-measured with it playing). The memory figure was measured with `top` after launch and includes the lock screen windows (about 24 MB of it).
