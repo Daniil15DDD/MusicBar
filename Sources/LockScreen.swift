@@ -144,17 +144,45 @@ final class GlassBackground: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// README images only: the blur layer can't render offscreen (it comes out white), so it is left out and the tint is a little
-    /// stronger to stand in for the blur; the shine and the bright edge stay, so it still reads as glass.
-    func hideBlurForScreenshots() {
+    private var snap: CALayer?
+    private static let ci = CIContext()
+
+    /// README images only: the live blur layer can't render offscreen (it comes out white), so a picture of what lies behind the glass
+    /// (already blurred, see blurredCrop) takes its place; the tint, the shine and the bright edge stay on top.
+    func setScreenshotBackdrop(_ img: CGImage?) {
         backdrop?.isHidden = true
-        tint.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        snap?.removeFromSuperlayer(); snap = nil
+        guard let img else { tint.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor; return }
+        let l = CALayer()
+        l.contents = img
+        l.contentsGravity = .resizeAspectFill
+        layer?.insertSublayer(l, at: 0)
+        snap = l
+        tint.backgroundColor = NSColor.black.withAlphaComponent(0.06).cgColor
+        needsLayout = true
+    }
+
+    /// The part of `full` (the whole picture, bottom-left origin, `scale` pixels per point) under `rect`, softly blurred, vivid and a
+    /// little brighter: what real Liquid Glass shows of the world behind it.
+    static func blurredCrop(_ full: CGImage, rect: NSRect, scale: CGFloat) -> CGImage? {
+        let img = CIImage(cgImage: full)
+        let crop = CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)
+        guard let blur = CIFilter(name: "CIGaussianBlur"), let color = CIFilter(name: "CIColorControls") else { return nil }
+        blur.setValue(img.clampedToExtent(), forKey: kCIInputImageKey)
+        blur.setValue(9 * scale, forKey: kCIInputRadiusKey)
+        guard let blurred = blur.outputImage else { return nil }
+        color.setValue(blurred, forKey: kCIInputImageKey)
+        color.setValue(1.55, forKey: kCIInputSaturationKey)
+        color.setValue(0.07, forKey: kCIInputBrightnessKey)
+        color.setValue(1.08, forKey: kCIInputContrastKey)
+        guard let out = color.outputImage?.cropped(to: crop) else { return nil }
+        return ci.createCGImage(out, from: crop)
     }
 
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        [backdrop, tint, shine, edge].compactMap { $0 }.forEach { $0.frame = bounds }
+        [backdrop, snap, tint, shine, edge].compactMap { $0 }.forEach { $0.frame = bounds }
         edgeMask.frame = bounds
         edgeMask.path = CGPath(roundedRect: bounds.insetBy(dx: 0.7, dy: 0.7), cornerWidth: radius, cornerHeight: radius, transform: nil)
         CATransaction.commit()
@@ -451,12 +479,12 @@ final class LockCardView: NSView {
     @objc private func favourite() { favB.pulse(1.3); media.toggleFavorite() }   // soft pop
 
     /// For the README images only: the glass blur can't render offscreen (it comes out white), so use a flat dark background.
-    func useFlatBackgroundForScreenshots(fullscreen on: Bool) {
+    func useFlatBackgroundForScreenshots(fullscreen on: Bool, snapshot: CGImage? = nil) {
         if on { fullscreen = true; layoutTexts(animated: false); cover.alphaValue = 0 }   // small cover away, text slid left, instantly
         glass.isHidden = true
         tint.isHidden = true
         liquid?.isHidden = false
-        (liquid as? GlassBackground)?.hideBlurForScreenshots()
+        (liquid as? GlassBackground)?.setScreenshotBackdrop(snapshot.flatMap { GlassBackground.blurredCrop($0, rect: frame, scale: 2) })
         layer?.borderWidth = 0
         applyTextShadow(true)
     }
@@ -803,16 +831,19 @@ final class LockBackdropView: ClickView {
         onModeChange?(m)
     }
 
-    /// README images only: opens a list with sample content, without animation. The glass can't render offscreen, so the pill is flat.
+    /// README images only: the corner buttons' glass gets the blurred picture behind it (see GlassBackground.setScreenshotBackdrop).
+    func applyScreenshotGlass(_ full: CGImage) {
+        guard !modePill.isHidden else { return }
+        pillGlass.setScreenshotBackdrop(GlassBackground.blurredCrop(full, rect: modePill.frame, scale: 2))
+    }
+
+    /// README images only: opens a list with sample content, without animation.
     func previewList(_ m: Mode, lyrics: [LyricLine], queue: [QueueItem]) {
         mode = m
         layoutContent()
         lyricsView.isHidden = m != .lyrics; queueView.isHidden = m != .queue
         [dateL, timeL, compactL].forEach { $0.alphaValue = 0 }
         shade.alphaValue = shadeLevel
-        pillGlass.isHidden = true
-        modePill.layer?.cornerRadius = 27
-        modePill.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
         updatePillSelection(animated: false)
         if m == .lyrics { lyricsView.set(.synced(lyrics)); lyricsView.setPosition(lyrics.count > 2 ? lyrics[2].time : 0) } else { queueView.set(queue) }
     }

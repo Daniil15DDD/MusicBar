@@ -159,8 +159,10 @@ enum Demo {
         win.contentView = root
         let card = LockCardView(media: m)
         card.frame.origin = NSPoint(x: list == nil ? (size.width - LockCardView.size.width) / 2 : LockBackdropView.listColumnX(size.width), y: size.height * 0.22 - LockCardView.size.height / 2)
+        var backdropView: LockBackdropView?
         if fullscreen {
             let backdrop = LockBackdropView(media: m, frame: root.bounds)
+            backdropView = backdrop
             root.addSubview(backdrop)
             if let motionStill { backdrop.previewMotionStill(motionStill) } else { backdrop.show() }
             if let list {
@@ -177,17 +179,25 @@ enum Demo {
             t.frame = NSRect(x: 0, y: size.height * 0.62, width: size.width, height: 190)
             root.addSubview(t)
         }
+        let scale: CGFloat = 2
+        func bitmap() -> NSBitmapImageRep? {
+            root.layoutSubtreeIfNeeded()
+            win.displayIfNeeded()
+            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
+                                             samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+                  let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+            ctx.cgContext.scaleBy(x: scale, y: scale)
+            root.layer?.render(in: ctx.cgContext)
+            return rep
+        }
+        // The glass blur can't render offscreen, so it is made here: the picture BEHIND the card (rendered without it) is blurred and
+        // brightened once, and that stands in for the blur layer, like real Liquid Glass bending what lies behind it.
+        let behind = bitmap()?.cgImage
         root.addSubview(card)
         card.setActive(true)
-        card.useFlatBackgroundForScreenshots(fullscreen: fullscreen)
-        root.layoutSubtreeIfNeeded()
-        win.displayIfNeeded()
-        let scale: CGFloat = 2
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
-                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-        ctx.cgContext.scaleBy(x: scale, y: scale)
-        root.layer?.render(in: ctx.cgContext)
+        card.useFlatBackgroundForScreenshots(fullscreen: fullscreen, snapshot: behind)
+        if let behind { backdropView?.applyScreenshotGlass(behind) }
+        guard let rep = bitmap() else { return nil }
         let img = NSImage(size: size)
         img.addRepresentation(rep)
         return img
