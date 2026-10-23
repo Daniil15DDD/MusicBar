@@ -41,7 +41,9 @@ A player card sits above the macOS lock screen: cover, title, seek bar, shuffle 
 <br><br><sub>Rendered from the app's own views (the real lock screen shows your wallpaper and a glass blur behind the card).</sub>
 </div>
 
-In fullscreen, two buttons in the bottom-right corner open **lyrics** (time-synced, the current line big and bright, tap a line to jump there) or the **queue**. Either button can be hidden in Settings.
+<div align="center">
+<sub>In fullscreen, two buttons in the bottom-right corner open <b>lyrics</b> (time-synced, the current line big and bright, tap a line to jump there) or the <b>queue</b>. Either button can be hidden in Settings.</sub>
+</div>
 
 <div align="center">
 <img src="assets/lockscreen-lyrics.png?v=6" width="720" alt="Lock screen lyrics view with the cover and player card on the left and synced lyrics on the right">
