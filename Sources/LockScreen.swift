@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreImage
+import CoreText
 
 /// A view that reports clicks; works on the first click even though the lock screen window is never active.
 class ClickView: NSView {
@@ -767,8 +768,19 @@ final class LockBackdropView: ClickView {
 
     override func setFrameSize(_ newSize: NSSize) { super.setFrameSize(newSize); layoutContent() }
 
-    /// The clock's typeface, picked in settings ("lockClockStyle"): serif (default), sans, rounded or mono.
+    /// Fonts bundled in Resources (copied into the app by build.sh) are registered once, before the first clock font is asked for.
+    private static let clockFontsRegistered: Void = {
+        for file in ["COOPBL.TTF", "Zapfino.ttf", "Blackmoor.ttf"] {
+            if let url = Bundle.main.url(forResource: file, withExtension: nil) { CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) }
+        }
+    }()
+
+    /// The clock's typeface, picked in settings ("lockClockStyle"): serif (default), sans, rounded, mono or a named font.
     private func clockFont(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        _ = Self.clockFontsRegistered
+        let size = size * CGFloat(UserDefaults.standard.object(forKey: "lockClockScale") as? Double ?? 1)   // size slider in settings
+        let names = ["cooper": "Cooper Black", "zapfino": "Zapfino", "blackmoor": "BlackmoorLetPlain"]
+        if let name = names[UserDefaults.standard.string(forKey: "lockClockStyle") ?? ""], let font = NSFont(name: name, size: size) { return font }
         let design: NSFontDescriptor.SystemDesign
         switch UserDefaults.standard.string(forKey: "lockClockStyle") {
         case "sans": design = .default
@@ -793,7 +805,8 @@ final class LockBackdropView: ClickView {
         wash.frame = bounds.insetBy(dx: -w * 0.2, dy: -h * 0.2)
         [shade, video, scrim].forEach { $0.frame = bounds }
         dateL.font = clockFont(h * 0.032, .semibold)
-        timeL.font = clockFont(h * 0.15, .light)
+        let weights: [String: NSFont.Weight] = ["ultralight": .ultraLight, "light": .light, "regular": .regular, "bold": .bold]
+        timeL.font = clockFont(h * 0.15, weights[UserDefaults.standard.string(forKey: "lockClockWeight") ?? ""] ?? .light)
         dateL.frame = NSRect(x: 0, y: h * 0.84, width: w, height: h * 0.05)
         timeL.frame = NSRect(x: 0, y: h * 0.66, width: w, height: h * 0.19)
         compactL.frame = NSRect(x: 0, y: h * 0.902 - 14, width: w, height: 28)

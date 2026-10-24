@@ -133,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func showPopover(_ button: NSStatusBarButton) {
+        settingsWindow?.close()   // opening the player also tidies Settings away
         media.refresh()
         popover.contentViewController = NSHostingController(rootView: PopoverView(media: media, audio: audio, openSettings: { [weak self] in self?.openSettings() }))
         // Anchor to a thin strip at the item's bottom edge so the popover hugs the menu bar.
@@ -157,8 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             w.title = "ORBT Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Clicking anywhere else closes it, so it can't come back to the front by itself when the menu bar item activates the app again.
-            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak w] _ in w?.close() }
+            // Clicking another app or the desktop closes it, so it can't come back to the front by itself when the menu bar item
+            // activates the app again. (Not "loses key": the ⓘ popovers are their own windows and would close it.)
+            NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak w] _ in w?.close() }
             w.center()
             settingsWindow = w
         }
