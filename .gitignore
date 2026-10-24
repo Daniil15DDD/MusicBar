@@ -6,3 +6,7 @@ xcuserdata/
 brag-output/
 experiments/
 brag-output-*/
+
+# clock fonts used locally (commercial / Apple licences)
+Resources/*.ttf
+Resources/*.TTF

@@ -145,9 +145,6 @@ final class GlassBackground: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// Changes how milky the glass is (clear = no tint) without rebuilding it.
-    func setTint(_ color: NSColor) { tint.backgroundColor = color.cgColor }
-
     private var snap: CALayer?
     private static let ci = CIContext()
 
@@ -677,7 +674,7 @@ final class LockBackdropView: ClickView {
     private let timeL = NSTextField(labelWithString: "")
     private let compactL = NSTextField(labelWithString: "")
     /// Liquid Glass behind the clock ("lockClockGlass"), and the editor a long press on the clock opens.
-    private let clockGlass = GlassBackground(frame: .zero, radius: 28)
+    private let glassText = GlassTextView(frame: .zero)
     private let editor = ClockEditorView(frame: .zero)
     private var editorOpen = false
     private var pressTimer: Timer?
@@ -729,7 +726,7 @@ final class LockBackdropView: ClickView {
         video.isHidden = true
         for l in [dateL, timeL, compactL] { l.alignment = .center; l.textColor = .white; l.lineBreakMode = .byClipping; l.wantsLayer = true }
         applyTheme()
-        [wash, shade, video, scrim, bigShadow, big, clockGlass, dateL, timeL, compactL, lyricsView, queueView, modePill, editor].forEach(addSubview)
+        [wash, shade, video, scrim, bigShadow, big, glassText, dateL, timeL, compactL, lyricsView, queueView, modePill, editor].forEach(addSubview)
         editor.isHidden = true
         editor.onChange = { [weak self] in self?.layoutContent(); self?.updateClock() }
         lyricsView.isHidden = true; queueView.isHidden = true
@@ -813,7 +810,7 @@ final class LockBackdropView: ClickView {
         layoutPill()
         // oversized so the blurred colours spread across the whole screen
         wash.frame = bounds.insetBy(dx: -w * 0.2, dy: -h * 0.2)
-        [shade, video, scrim].forEach { $0.frame = bounds }
+        [shade, video, scrim, glassText].forEach { $0.frame = bounds }
         dateL.font = clockFont(h * 0.032, .semibold)
         let weights: [String: NSFont.Weight] = ["ultralight": .ultraLight, "light": .light, "regular": .regular, "bold": .bold]
         timeL.font = clockFont(h * 0.15, weights[UserDefaults.standard.string(forKey: "lockClockWeight") ?? ""] ?? .light)
@@ -864,7 +861,7 @@ final class LockBackdropView: ClickView {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = reduce ? 0.2 : 0.65; ctx.timingFunction = .arrive
             self.big.animator().frame = target; self.bigShadow.animator().frame = target
-            [self.dateL, self.timeL, self.compactL].forEach { $0.animator().alphaValue = list ? 0 : 1 }
+            [self.dateL, self.timeL, self.compactL, self.glassText].forEach { $0.animator().alphaValue = list ? 0 : 1 }
             self.shade.animator().alphaValue = self.shadeLevel
         }
         let outgoing: NSView? = old == .lyrics ? lyricsView : old == .queue ? queueView : nil
@@ -907,7 +904,7 @@ final class LockBackdropView: ClickView {
         mode = m
         layoutContent()
         lyricsView.isHidden = m != .lyrics; queueView.isHidden = m != .queue
-        [dateL, timeL, compactL].forEach { $0.alphaValue = 0 }
+        [dateL, timeL, compactL, glassText].forEach { $0.alphaValue = 0 }
         shade.alphaValue = shadeLevel
         updatePillSelection(animated: false)
         if m == .lyrics { lyricsView.set(.synced(lyrics)); lyricsView.setPosition(lyrics.count > 2 ? lyrics[2].time : 0) } else { queueView.set(queue) }
@@ -984,7 +981,7 @@ final class LockBackdropView: ClickView {
         lastPlaying = nil
     }
 
-    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, scrim, dateL, timeL, compactL, modePill] }
+    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, scrim, dateL, timeL, compactL, glassText, modePill] }
 
     /// README image only: a still frame of the moving artwork stands in for the video (an AVPlayer can't render offscreen).
     func previewMotionStill(_ img: NSImage) {
@@ -1020,7 +1017,7 @@ final class LockBackdropView: ClickView {
         let k: CGFloat = playing ? 1 : 0.9
         [big, bigShadow].forEach { $0.animateScale(to: k, from: k * 0.94) }   // the cover settles into place instead of just appearing
         video.fadeIn(to: imageAlpha, duration: 0.8)
-        [wash, dateL, timeL, compactL, modePill].forEach { $0.fadeIn(to: 1, duration: 0.8) }
+        [wash, dateL, timeL, compactL, glassText, modePill].forEach { $0.fadeIn(to: 1, duration: 0.8) }
         shade.fadeIn(to: shadeTarget, duration: 0.8)
         scrim.fadeIn(to: scrimTarget, duration: 0.8)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateClock() }
@@ -1037,7 +1034,7 @@ final class LockBackdropView: ClickView {
             self.setActive(false, keepVideo: true)
         }
         [big, bigShadow].forEach { $0.fadeOut(duration: 0.25) }
-        [video, wash, shade, scrim, dateL, timeL, compactL, modePill, lyricsView, queueView].forEach { $0.fadeOut(duration: 0.5) }
+        [video, wash, shade, scrim, dateL, timeL, compactL, glassText, modePill, lyricsView, queueView].forEach { $0.fadeOut(duration: 0.5) }
         CATransaction.commit()
     }
 
@@ -1168,9 +1165,9 @@ final class LockBackdropView: ClickView {
         let tf = DateFormatter(); tf.timeStyle = .short; tf.dateStyle = .none
         let df = DateFormatter(); df.dateFormat = "EEE d MMM"
         let time = tf.string(from: now), date = df.string(from: now)
-        // With Liquid Glass the glass below is cut to the digits' shape; only a faint white stays on top so the shape still reads
-        let glassOn = UserDefaults.standard.object(forKey: "lockClockGlass") as? Bool ?? false
-        let ink = glassOn ? NSColor.white.withAlphaComponent(0.15) : uiColor
+        // With Liquid Glass the digits are drawn by glassText instead, so the plain text goes clear
+        let glassOn = UserDefaults.standard.bool(forKey: "lockClockGlass")
+        let ink = glassOn ? NSColor.clear : uiColor
         timeL.stringValue = time
         dateL.stringValue = date
         timeL.textColor = ink; dateL.textColor = ink
@@ -1179,26 +1176,11 @@ final class LockBackdropView: ClickView {
         s.append(NSAttributedString(string: "  " + date, attributes: [.font: clockFont(20, .regular), .foregroundColor: ink.withAlphaComponent(0.85), .paragraphStyle: centered]))
         compactL.attributedStringValue = s
 
-        let rect = clockRect()
-        clockGlass.frame = rect
-        clockGlass.isHidden = !glassOn
-        clockGlass.setTint(NSColor.white.withAlphaComponent(0.5 * CGFloat(UserDefaults.standard.object(forKey: "lockClockGlassy") as? Double ?? 0.3)))   // 0 = fully clear
-        guard glassOn else { clockGlass.layer?.mask = nil; return }
-        // the glass shows only where the digits are: each visible clock line is drawn white into a mask
-        let cut = CALayer()
-        cut.frame = CGRect(origin: .zero, size: rect.size)
-        for label in media.motionURL != nil ? [timeL, dateL] : [compactL] {
-            let text = NSMutableAttributedString(attributedString: label.attributedStringValue)
-            text.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: 0, length: text.length))
-            let box = text.size()
-            let line = CATextLayer()
-            line.string = text
-            line.alignmentMode = .center
-            line.contentsScale = 2
-            line.frame = CGRect(x: label.frame.minX - rect.minX, y: label.frame.midY - rect.minY - box.height / 2, width: label.frame.width, height: box.height)
-            cut.addSublayer(line)
-        }
-        clockGlass.layer?.mask = cut
+        glassText.isHidden = !glassOn
+        guard glassOn else { return }
+        let d = UserDefaults.standard
+        let amount = d.object(forKey: "lockClockGlassy") == nil ? 0.6 : d.double(forKey: "lockClockGlassy")   // 0 = fully clear, 1 = glassiest
+        glassText.set([timeL, dateL, compactL].filter { !$0.isHidden }.map { (text: $0.attributedStringValue, box: $0.frame) }, glass: CGFloat(amount))
     }
 
     /// Where the clock's text sits: the time and date while a video plays, otherwise the small line at the top.
@@ -1240,6 +1222,73 @@ final class LockBackdropView: ClickView {
     }
 }
 
+/// The clock digits as glass, drawn the way the card's glass looks: a clear body with a soft shine from the top, a bright rim that
+/// fades round the shape (bright top-left, dim bottom-right, like the card's edge) and a soft shadow. Built from the glyph outlines,
+/// so it fits any font.
+/// shortcut: no live blur (a blur layer can't be cut to letter shapes without going blank); the picture behind is already blurred.
+final class GlassTextView: NSView {
+    private let shadowL = CAShapeLayer()
+    private let body = CAShapeLayer()
+    private let shine = CAGradientLayer(), shineMask = CAShapeLayer()
+    private let rim = CAGradientLayer(), rimMask = CAShapeLayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        shadowL.shadowColor = NSColor.black.cgColor
+        shadowL.shadowRadius = 14; shadowL.shadowOffset = CGSize(width: 0, height: -6)
+        shine.startPoint = CGPoint(x: 0.5, y: 1); shine.endPoint = CGPoint(x: 0.5, y: 0.3)   // top of the digits is y = 1
+        shineMask.fillColor = NSColor.white.cgColor
+        shine.mask = shineMask
+        rim.startPoint = CGPoint(x: 0, y: 1); rim.endPoint = CGPoint(x: 1, y: 0)
+        rimMask.fillColor = nil; rimMask.strokeColor = NSColor.white.cgColor; rimMask.lineJoin = .round
+        rim.mask = rimMask
+        [shadowL, body, shine, rim].forEach { layer?.addSublayer($0) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Never takes clicks, so a tap on the clock reaches the backdrop behind it.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Draws each line (its text and the box it is centred in, in this view's coordinates). `glass` runs from 0 (nearly clear) to 1
+    /// (glassiest): it scales the rim, the shine and the shadow, and adds only a little frost to the body.
+    func set(_ lines: [(text: NSAttributedString, box: CGRect)], glass g: CGFloat) {
+        let path = CGMutablePath()
+        for (text, box) in lines {
+            let line = CTLineCreateWithAttributedString(text)
+            let bounds = CTLineGetBoundsWithOptions(line, [])   // typographic bounds: centres the same way the plain label does
+            let origin = CGPoint(x: box.midX - bounds.midX, y: box.midY - bounds.midY)
+            for run in CTLineGetGlyphRuns(line) as? [CTRun] ?? [] {
+                guard let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] else { continue }
+                let n = CTRunGetGlyphCount(run)
+                var glyphs = [CGGlyph](repeating: 0, count: n), points = [CGPoint](repeating: .zero, count: n)
+                CTRunGetGlyphs(run, CFRange(), &glyphs); CTRunGetPositions(run, CFRange(), &points)
+                for i in 0..<n {
+                    guard let g = CTFontCreatePathForGlyph(font as! CTFont, glyphs[i], nil) else { continue }
+                    path.addPath(g, transform: CGAffineTransform(translationX: origin.x + points[i].x, y: origin.y + points[i].y))
+                }
+            }
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard !path.isEmpty else { return }
+        let b = path.boundingBox.insetBy(dx: -6, dy: -6)
+        var move = CGAffineTransform(translationX: -b.minX, y: -b.minY)
+        let local = path.copy(using: &move)
+        let size = CGRect(origin: .zero, size: b.size)
+        for l in [shadowL, body, shine, rim] as [CALayer] { l.frame = b }
+        shadowL.shadowPath = local
+        body.path = local; body.fillColor = NSColor.white.withAlphaComponent(0.25 * g).cgColor
+        let k = min(1, 0.25 + g)
+        shadowL.shadowOpacity = Float(0.15 + 0.3 * g)
+        shine.colors = [NSColor.white.withAlphaComponent(0.1 + 0.55 * g).cgColor, NSColor.white.withAlphaComponent(0.03).cgColor]
+        rim.colors = [0.95, 0.12, 0.5].map { NSColor.white.withAlphaComponent($0 * k).cgColor }
+        rimMask.lineWidth = 1.2 + 1.2 * g
+        shineMask.frame = size; shineMask.path = local
+        rimMask.frame = size; rimMask.path = local
+    }
+}
+
 /// Slider that takes its first click even in a panel that never becomes active (the lock screen one never does).
 private final class FirstMouseSlider: NSSlider {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -1251,7 +1300,7 @@ final class ClockEditorView: NSView {
     private let glass = GlassBackground(frame: .zero, radius: 22, tint: NSColor.black.withAlphaComponent(0.2), blur: 4)
     private let size = FirstMouseSlider(value: 1, minValue: 0.6, maxValue: 1.4, target: nil, action: nil)
     private let glassBox = PressButton()
-    private let amount = FirstMouseSlider(value: 0.3, minValue: 0, maxValue: 1, target: nil, action: nil)
+    private let amount = FirstMouseSlider(value: 0.6, minValue: 0, maxValue: 1, target: nil, action: nil)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -1280,7 +1329,7 @@ final class ClockEditorView: NSView {
         let d = UserDefaults.standard
         size.doubleValue = d.object(forKey: "lockClockScale") as? Double ?? 1
         glassBox.state = (d.object(forKey: "lockClockGlass") as? Bool ?? false) ? .on : .off
-        amount.doubleValue = d.object(forKey: "lockClockGlassy") as? Double ?? 0.3
+        amount.doubleValue = d.object(forKey: "lockClockGlassy") as? Double ?? 0.6
     }
     @objc private func amountChanged() { UserDefaults.standard.set(amount.doubleValue, forKey: "lockClockGlassy"); onChange?() }
 
