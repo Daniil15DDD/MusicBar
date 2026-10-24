@@ -625,6 +625,33 @@ final class LockCardView: NSView {
     }
 }
 
+/// The song's colour for the lock screen UI: its most distinct colour mixed into white, so the text isn't plain white.
+enum SongTint {
+    /// What lists (lyrics, queue) draw their text with; updated by the full-screen view.
+    static var ink = NSColor.white
+    private static var cache: (art: NSImage, accent: NSColor?)?
+
+    /// A vivid version of the cover's most distinct colour (nil for a grey cover).
+    static func accent(for art: NSImage?) -> NSColor? {
+        guard let art else { return nil }
+        if let c = cache, c.art === art { return c.accent }
+        let a = art.cgImage(forProposedRect: nil, context: nil, hints: nil).flatMap(LockBackdropView.accentColor)
+        cache = (art, a)
+        return a
+    }
+    /// White with the song's colour mixed in (plain white for a grey cover).
+    static func white(for art: NSImage?) -> NSColor {
+        accent(for: art).flatMap { NSColor.white.blended(withFraction: 0.35, of: $0) } ?? .white
+    }
+    /// A dark shade of the song's colour, for text on a bright picture (near-black for a grey cover).
+    static func dark(for art: NSImage?) -> NSColor {
+        guard let c = accent(for: art) else { return NSColor(white: 0.08, alpha: 1) }
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return NSColor(hue: h, saturation: s, brightness: 0.27, alpha: 1)
+    }
+}
+
 /// Full-screen backdrop shown when you click the cover on the card.
 /// Moving artwork: the video fills the screen with a big serif clock. Otherwise: a blurred colour wash of the cover,
 /// a large cover in the middle and a small clock at the top. We draw our own clock because this window covers the system one.
@@ -633,6 +660,11 @@ final class LockBackdropView: ClickView {
     private let media: MediaController
     private let wash = NSView()
     private let shade = NSView()
+    /// Sits above the video and the wash (but under the cover and the text) and darkens them when the picture is bright.
+    private let scrim = NSView()
+    private var artLuma: CGFloat = 0
+    private var uiColor = NSColor.white
+    private var darkUI = false
     private let video = LoopingPlayerView()
     private let big = NSView()
     private let bigShadow = NSView()
@@ -670,7 +702,9 @@ final class LockBackdropView: ClickView {
         super.init(frame: frame)
         wantsLayer = true
         // no solid background: the fades must reveal / return to the user's wallpaper, not black
-        for v in [wash, shade, big, bigShadow] { v.wantsLayer = true }
+        for v in [wash, shade, scrim, big, bigShadow] { v.wantsLayer = true }
+        scrim.layer?.backgroundColor = NSColor.black.cgColor
+        scrim.alphaValue = 0
         wash.layer?.contentsGravity = .resizeAspectFill
         shade.layer?.backgroundColor = NSColor.black.cgColor
         big.layer?.cornerRadius = 34            // clipped (masksToBounds) so the picture itself has round corners
@@ -684,8 +718,9 @@ final class LockBackdropView: ClickView {
         bigShadow.layer?.shadowOffset = CGSize(width: 0, height: -6)
         video.maxPixels = 1920   // full-screen backdrop: sharper than the small popover video
         video.isHidden = true
-        for l in [dateL, timeL, compactL] { l.alignment = .center; l.textColor = .white; l.lineBreakMode = .byClipping }
-        [wash, shade, video, bigShadow, big, dateL, timeL, compactL, lyricsView, queueView, modePill].forEach(addSubview)
+        for l in [dateL, timeL, compactL] { l.alignment = .center; l.textColor = .white; l.lineBreakMode = .byClipping; l.wantsLayer = true }
+        applyTheme()
+        [wash, shade, video, scrim, bigShadow, big, dateL, timeL, compactL, lyricsView, queueView, modePill].forEach(addSubview)
         lyricsView.isHidden = true; queueView.isHidden = true
         lyricsView.onSeek = { [weak media] t in media?.seek(to: t) }
         queueView.onPlay = { [weak media] i in media?.playQueueItem(i) }
@@ -732,9 +767,17 @@ final class LockBackdropView: ClickView {
 
     override func setFrameSize(_ newSize: NSSize) { super.setFrameSize(newSize); layoutContent() }
 
-    private func serif(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+    /// The clock's typeface, picked in settings ("lockClockStyle"): serif (default), sans, rounded or mono.
+    private func clockFont(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        let design: NSFontDescriptor.SystemDesign
+        switch UserDefaults.standard.string(forKey: "lockClockStyle") {
+        case "sans": design = .default
+        case "rounded": design = .rounded
+        case "mono": design = .monospaced
+        default: design = .serif
+        }
         let base = NSFont.systemFont(ofSize: size, weight: weight)
-        return base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+        return base.fontDescriptor.withDesign(design).flatMap { NSFont(descriptor: $0, size: size) } ?? base
     }
 
     func layoutContent() {
@@ -748,9 +791,9 @@ final class LockBackdropView: ClickView {
         layoutPill()
         // oversized so the blurred colours spread across the whole screen
         wash.frame = bounds.insetBy(dx: -w * 0.2, dy: -h * 0.2)
-        [shade, video].forEach { $0.frame = bounds }
-        dateL.font = serif(h * 0.032, .semibold)
-        timeL.font = serif(h * 0.15, .light)
+        [shade, video, scrim].forEach { $0.frame = bounds }
+        dateL.font = clockFont(h * 0.032, .semibold)
+        timeL.font = clockFont(h * 0.15, .light)
         dateL.frame = NSRect(x: 0, y: h * 0.84, width: w, height: h * 0.05)
         timeL.frame = NSRect(x: 0, y: h * 0.66, width: w, height: h * 0.19)
         compactL.frame = NSRect(x: 0, y: h * 0.902 - 14, width: w, height: 28)
@@ -789,6 +832,7 @@ final class LockBackdropView: ClickView {
         guard m != mode else { return }
         let old = mode
         mode = m
+        updateTheme(animated: true)
         let w = bounds.width, h = bounds.height, side = LockCardView.size.width
         let list = m != .cover
         let target = NSRect(x: list ? Self.listColumnX(w) : (w - side) / 2, y: h * 0.71 - side, width: side, height: side)
@@ -868,6 +912,7 @@ final class LockBackdropView: ClickView {
         }
         let key = i.key + (i.shuffle ? "|s" : "")
         contentKey = key
+        refreshInk()   // the new song's colour, before its lines are built
         if mode == .lyrics {
             var answered = false
             lyricsStore.load(i) { [weak self] r in
@@ -914,7 +959,7 @@ final class LockBackdropView: ClickView {
         lastPlaying = nil
     }
 
-    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, dateL, timeL, compactL, modePill] }
+    private var fadingViews: [NSView] { [big, bigShadow, video, wash, shade, scrim, dateL, timeL, compactL, modePill] }
 
     /// README image only: a still frame of the moving artwork stands in for the video (an AVPlayer can't render offscreen).
     func previewMotionStill(_ img: NSImage) {
@@ -943,7 +988,7 @@ final class LockBackdropView: ClickView {
         let imageAlpha: CGFloat = playing ? 1 : 0.62            // paused look: a little faded and smaller
         big.layer?.transform = big.scaled(playing ? 1 : 0.9)
         bigShadow.layer?.transform = bigShadow.scaled(playing ? 1 : 0.9)
-        let shadeTarget = shade.alphaValue
+        let shadeTarget = shade.alphaValue, scrimTarget = scrim.alphaValue
         fadingViews.forEach { $0.alphaValue = 0 }
         CATransaction.flush()   // finish the heavy first draw while invisible, so the fades below start on a ready screen
         [big, bigShadow].forEach { $0.fadeIn(to: imageAlpha, duration: 0.25) }
@@ -952,6 +997,7 @@ final class LockBackdropView: ClickView {
         video.fadeIn(to: imageAlpha, duration: 0.8)
         [wash, dateL, timeL, compactL, modePill].forEach { $0.fadeIn(to: 1, duration: 0.8) }
         shade.fadeIn(to: shadeTarget, duration: 0.8)
+        scrim.fadeIn(to: scrimTarget, duration: 0.8)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.updateClock() }
     }
 
@@ -966,7 +1012,7 @@ final class LockBackdropView: ClickView {
             self.setActive(false, keepVideo: true)
         }
         [big, bigShadow].forEach { $0.fadeOut(duration: 0.25) }
-        [video, wash, shade, dateL, timeL, compactL, modePill, lyricsView, queueView].forEach { $0.fadeOut(duration: 0.5) }
+        [video, wash, shade, scrim, dateL, timeL, compactL, modePill, lyricsView, queueView].forEach { $0.fadeOut(duration: 0.5) }
         CATransaction.commit()
     }
 
@@ -998,8 +1044,85 @@ final class LockBackdropView: ClickView {
             let cg = media.artwork?.cgImage(forProposedRect: nil, context: nil, hints: nil)
             big.layer?.contents = cg
             wash.layer?.contents = (blurCache?.art === media.artwork ? blurCache?.image : nil) ?? cg.flatMap(Self.blurred)
+            artLuma = cg.map(Self.luminance) ?? 0
         }
+        updateTheme()
         updateClock()
+    }
+
+    /// Keeps the clock and buttons readable. Setting "lockContrast": auto, off, or high (always darken, white text).
+    /// Auto: on a bright picture (a white album) the text takes the cover's own distinct colour, darkened (brown for a brown baby),
+    /// or near-black when the cover has none. An open lyrics/queue list darkens the picture instead, because its text stays white.
+    /// shortcut: with moving artwork the cover's brightness stands in for the video's, upgrade by sampling a video frame.
+    private func updateTheme(animated: Bool = false) {
+        let setting = UserDefaults.standard.string(forKey: "lockContrast") ?? "auto"
+        let playing = media.info?.isPlaying == true
+        // paused, the picture is faded and reads brighter, so switch a little earlier
+        let bright = setting == "auto" && artLuma > (playing ? 0.55 : 0.45)
+        let listOpen = mode != .cover
+        darkUI = bright && !listOpen
+        refreshInk()
+        uiColor = darkUI ? SongTint.dark(for: media.artwork) : .white
+        let level: CGFloat = listOpen ? (setting == "off" ? 0 : bright ? 0.5 : 0.3) : (setting == "high" ? 0.4 : 0)
+        if animated { NSAnimationContext.runAnimationGroup { $0.duration = 0.65; $0.timingFunction = .arrive; self.scrim.animator().alphaValue = level } }
+        else { scrim.alphaValue = level }
+        applyTheme()
+    }
+
+    /// Lyrics text: white mixed with the song's colour when "Tint the lyrics" is on in the settings (off by default).
+    private func refreshInk() {
+        SongTint.ink = UserDefaults.standard.bool(forKey: "tintLyrics") ? SongTint.white(for: media.artwork) : .white
+    }
+
+    private func applyTheme() {
+        let sh = NSShadow()
+        sh.shadowColor = darkUI ? NSColor.white.withAlphaComponent(0.55) : NSColor.black.withAlphaComponent(0.35)
+        sh.shadowBlurRadius = 10; sh.shadowOffset = .zero
+        for l in [dateL, timeL, compactL] { l.textColor = uiColor; l.shadow = sh }
+        lyricsB.contentTintColor = uiColor; queueB.contentTintColor = uiColor
+        updateClock()   // the compact label carries its own colours
+    }
+
+    /// The most distinct colour of an image (ignoring near-white, near-black and grey), made vivid; nil for a grey cover.
+    static func accentColor(_ cg: CGImage) -> NSColor? {
+        let n = 32
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+        }
+        var wsum = [CGFloat](repeating: 0, count: 12), rs = wsum, gs = wsum, bs = wsum   // 12 hue buckets of 30 degrees
+        for i in 0..<(n * n) {
+            let r = CGFloat(px[i * 4]) / 255, g = CGFloat(px[i * 4 + 1]) / 255, b = CGFloat(px[i * 4 + 2]) / 255
+            let mx = max(r, g, b), mn = min(r, g, b), d = mx - mn
+            guard mx > 0.15, mx < 0.93, d / mx > 0.25 else { continue }
+            var h: CGFloat = mx == r ? ((g - b) / d).truncatingRemainder(dividingBy: 6) : mx == g ? (b - r) / d + 2 : (r - g) / d + 4
+            h *= 60; if h < 0 { h += 360 }
+            let k = min(11, Int(h / 30)), s = d / mx
+            rs[k] += r * s; gs[k] += g * s; bs[k] += b * s; wsum[k] += s
+        }
+        guard let k = wsum.indices.max(by: { wsum[$0] < wsum[$1] }), wsum[k] > CGFloat(n * n) * 0.04 else { return nil }
+        let c = NSColor(srgbRed: rs[k] / wsum[k], green: gs[k] / wsum[k], blue: bs[k] / wsum[k], alpha: 1)
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return NSColor(hue: h, saturation: min(max(s, 0.5), 0.9), brightness: 1, alpha: 1)
+    }
+
+    /// Average brightness (0 black ... 1 white) of an image, from a 16x16 thumbnail.
+    private static func luminance(_ cg: CGImage) -> CGFloat {
+        let n = 16
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+        }
+        var sum: CGFloat = 0
+        for i in 0..<(n * n) { sum += 0.2126 * CGFloat(px[i * 4]) + 0.7152 * CGFloat(px[i * 4 + 1]) + 0.0722 * CGFloat(px[i * 4 + 2]) }
+        return sum / CGFloat(n * n) / 255
     }
 
     private static func blurred(_ cg: CGImage) -> CGImage? {
@@ -1023,8 +1146,8 @@ final class LockBackdropView: ClickView {
         timeL.stringValue = time
         dateL.stringValue = date
         let centered = NSMutableParagraphStyle(); centered.alignment = .center
-        let s = NSMutableAttributedString(string: time, attributes: [.font: NSFont.systemFont(ofSize: 20, weight: .bold), .foregroundColor: NSColor.white, .paragraphStyle: centered])
-        s.append(NSAttributedString(string: "  " + date, attributes: [.font: NSFont.systemFont(ofSize: 20, weight: .regular), .foregroundColor: NSColor.white.withAlphaComponent(0.85), .paragraphStyle: centered]))
+        let s = NSMutableAttributedString(string: time, attributes: [.font: clockFont(20, .bold), .foregroundColor: uiColor, .paragraphStyle: centered])
+        s.append(NSAttributedString(string: "  " + date, attributes: [.font: clockFont(20, .regular), .foregroundColor: uiColor.withAlphaComponent(0.85), .paragraphStyle: centered]))
         compactL.attributedStringValue = s
     }
 }

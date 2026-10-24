@@ -89,10 +89,11 @@ private func makeBlur() -> NSObject? {
     return f
 }
 
-private func makeLabel(_ size: CGFloat, _ weight: NSFont.Weight, alpha: CGFloat = 1, wrapping: String? = nil) -> NSTextField {
+/// `tinted`: lyrics only, takes the song's colour when that setting is on (everything else stays white).
+private func makeLabel(_ size: CGFloat, _ weight: NSFont.Weight, alpha: CGFloat = 1, wrapping: String? = nil, tinted: Bool = false) -> NSTextField {
     let l = wrapping.map { NSTextField(wrappingLabelWithString: $0) } ?? NSTextField(labelWithString: "")
     l.font = .systemFont(ofSize: size, weight: weight)
-    l.textColor = NSColor.white.withAlphaComponent(alpha)
+    l.textColor = (tinted ? SongTint.ink : NSColor.white).withAlphaComponent(alpha)
     l.isSelectable = false
     l.drawsBackground = false
     l.wantsLayer = true
@@ -112,7 +113,7 @@ final class LyricsView: NSView {
     private var rowTop: [CGFloat] = [], rowH: [CGFloat] = []
     private var hostH: CGFloat = 0
     private var active = -1
-    private let message = makeLabel(30, .semibold, alpha: 0.7)
+    private let message = makeLabel(30, .semibold, alpha: 0.7, tinted: true)
     private let gap: CGFloat = 28
     private var fontSize: CGFloat { max(30, bounds.height * 0.05) }
 
@@ -158,7 +159,7 @@ final class LyricsView: NSView {
         let w = bounds.width - 20
         var y: CGFloat = 0
         for t in texts {
-            let l = makeLabel(fontSize, .bold, wrapping: t)
+            let l = makeLabel(fontSize, .bold, wrapping: t, tinted: true)
             l.lineBreakMode = .byWordWrapping
             l.maximumNumberOfLines = 0
             let h = ceil(l.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: w, height: 10_000)).height ?? fontSize * 1.3) + 4

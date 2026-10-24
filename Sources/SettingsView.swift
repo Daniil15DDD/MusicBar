@@ -10,6 +10,9 @@ struct SettingsView: View {
     @AppStorage("reactiveAudio") private var reactiveAudio = false
     @AppStorage("lockScreenPlayer") private var lockScreenPlayer = true
     @AppStorage("lockLiquidGlass") private var lockLiquidGlass = true
+    @AppStorage("lockContrast") private var lockContrast = "auto"
+    @AppStorage("lockClockStyle") private var lockClockStyle = "serif"
+    @AppStorage("tintLyrics") private var tintLyrics = false
     @AppStorage("showLyricsButton") private var showLyricsButton = true
     @AppStorage("showQueueButton") private var showQueueButton = true
     @AppStorage("spotifyClientID") private var spotifyClientID = ""
@@ -43,7 +46,20 @@ struct SettingsView: View {
             Section("Behaviour") {
                 Toggle("Show the player on the lock screen", isOn: $lockScreenPlayer)
                 Toggle("Liquid Glass look on the lock screen", isOn: $lockLiquidGlass).disabled(!lockScreenPlayer)
+                Picker("Contrast on the full-screen lock screen", selection: $lockContrast) {
+                    Text("Automatic").tag("auto")
+                    Text("Off").tag("off")
+                    Text("High").tag("high")
+                }.disabled(!lockScreenPlayer)
+                Picker("Clock style on the full-screen lock screen", selection: $lockClockStyle) {
+                    Text("Serif").tag("serif")
+                    Text("Sans").tag("sans")
+                    Text("Rounded").tag("rounded")
+                    Text("Mono").tag("mono")
+                }.disabled(!lockScreenPlayer)
+                Text("Automatic: on a bright cover (a white album, say) the clock and buttons take the cover's own colour, darkened (brown for a brown baby), or near-black if it has none. High keeps white text and always darkens the picture. Off never changes anything.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Lyrics button on the full-screen lock screen", isOn: $showLyricsButton).disabled(!lockScreenPlayer)
+                Toggle("Tint the lyrics with the song's colour", isOn: $tintLyrics).disabled(!lockScreenPlayer)
                 Toggle("Queue button on the full-screen lock screen", isOn: $showQueueButton).disabled(!lockScreenPlayer)
                 Text("Lyrics are looked up on lrclib.net, which receives the song title, artist and length. The queue shows the next songs of the current Apple Music playlist (with shuffle on Apple Music hides what is next, so the songs you just played are shown), or Spotify's real queue once Spotify is connected below.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Open player popover on click", isOn: $openPopoverOnClick)
@@ -71,6 +87,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 800)
+        .frame(width: 420, height: 880)
     }
 }

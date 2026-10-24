@@ -157,6 +157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             w.title = "ORBT Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
+            // Clicking anywhere else closes it, so it can't come back to the front by itself when the menu bar item activates the app again.
+            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak w] _ in w?.close() }
             w.center()
             settingsWindow = w
         }
