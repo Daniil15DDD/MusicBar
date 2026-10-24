@@ -136,8 +136,15 @@ struct InfoButton: View {
 struct InfoLabel: View {
     let title: String
     let info: SettingInfo
-    init(_ title: String, _ info: SettingInfo) { self.title = title; self.info = info }
-    var body: some View { HStack(spacing: 6) { Text(title); InfoButton(info: info) } }
+    let icon: String?
+    init(_ title: String, _ info: SettingInfo, icon: String? = nil) { self.title = title; self.info = info; self.icon = icon }
+    var body: some View {
+        HStack(spacing: 6) {
+            if let icon { Image(systemName: icon).foregroundStyle(.secondary).frame(width: 20) }
+            Text(title)
+            InfoButton(info: info)
+        }
+    }
 }
 
 struct InfoCard: View {

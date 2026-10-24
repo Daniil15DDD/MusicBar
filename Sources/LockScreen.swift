@@ -145,6 +145,9 @@ final class GlassBackground: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// Changes how milky the glass is (clear = no tint) without rebuilding it.
+    func setTint(_ color: NSColor) { tint.backgroundColor = color.cgColor }
+
     private var snap: CALayer?
     private static let ci = CIContext()
 
@@ -673,6 +676,11 @@ final class LockBackdropView: ClickView {
     private let dateL = NSTextField(labelWithString: "")
     private let timeL = NSTextField(labelWithString: "")
     private let compactL = NSTextField(labelWithString: "")
+    /// Liquid Glass behind the clock ("lockClockGlass"), and the editor a long press on the clock opens.
+    private let clockGlass = GlassBackground(frame: .zero, radius: 28)
+    private let editor = ClockEditorView(frame: .zero)
+    private var editorOpen = false
+    private var pressTimer: Timer?
     private var bag = Set<AnyCancellable>()
     private var timer: Timer?
     private weak var lastArt: NSImage?
@@ -721,7 +729,9 @@ final class LockBackdropView: ClickView {
         video.isHidden = true
         for l in [dateL, timeL, compactL] { l.alignment = .center; l.textColor = .white; l.lineBreakMode = .byClipping; l.wantsLayer = true }
         applyTheme()
-        [wash, shade, video, scrim, bigShadow, big, dateL, timeL, compactL, lyricsView, queueView, modePill].forEach(addSubview)
+        [wash, shade, video, scrim, bigShadow, big, clockGlass, dateL, timeL, compactL, lyricsView, queueView, modePill, editor].forEach(addSubview)
+        editor.isHidden = true
+        editor.onChange = { [weak self] in self?.layoutContent(); self?.updateClock() }
         lyricsView.isHidden = true; queueView.isHidden = true
         lyricsView.onSeek = { [weak media] t in media?.seek(to: t) }
         queueView.onPlay = { [weak media] i in media?.playQueueItem(i) }
@@ -810,6 +820,7 @@ final class LockBackdropView: ClickView {
         dateL.frame = NSRect(x: 0, y: h * 0.84, width: w, height: h * 0.05)
         timeL.frame = NSRect(x: 0, y: h * 0.66, width: w, height: h * 0.19)
         compactL.frame = NSRect(x: 0, y: h * 0.902 - 14, width: w, height: 28)
+        editor.frame = NSRect(x: w / 2 - 130, y: h * 0.46, width: 260, height: 150)
     }
 
     /// The corner buttons for lyrics and queue, each of which can be switched off in the settings.
@@ -908,6 +919,7 @@ final class LockBackdropView: ClickView {
         lyricsTimer?.invalidate(); lyricsTimer = nil
         lyricsView.isHidden = true; queueView.isHidden = true
         lyricsView.clear(); queueView.clear()
+        hideEditor()
         contentKey = ""
         layoutContent()
     }
@@ -1156,13 +1168,124 @@ final class LockBackdropView: ClickView {
         let tf = DateFormatter(); tf.timeStyle = .short; tf.dateStyle = .none
         let df = DateFormatter(); df.dateFormat = "EEE d MMM"
         let time = tf.string(from: now), date = df.string(from: now)
+        // With Liquid Glass the glass below is cut to the digits' shape; only a faint white stays on top so the shape still reads
+        let glassOn = UserDefaults.standard.object(forKey: "lockClockGlass") as? Bool ?? false
+        let ink = glassOn ? NSColor.white.withAlphaComponent(0.15) : uiColor
         timeL.stringValue = time
         dateL.stringValue = date
+        timeL.textColor = ink; dateL.textColor = ink
         let centered = NSMutableParagraphStyle(); centered.alignment = .center
-        let s = NSMutableAttributedString(string: time, attributes: [.font: clockFont(20, .bold), .foregroundColor: uiColor, .paragraphStyle: centered])
-        s.append(NSAttributedString(string: "  " + date, attributes: [.font: clockFont(20, .regular), .foregroundColor: uiColor.withAlphaComponent(0.85), .paragraphStyle: centered]))
+        let s = NSMutableAttributedString(string: time, attributes: [.font: clockFont(20, .bold), .foregroundColor: ink, .paragraphStyle: centered])
+        s.append(NSAttributedString(string: "  " + date, attributes: [.font: clockFont(20, .regular), .foregroundColor: ink.withAlphaComponent(0.85), .paragraphStyle: centered]))
         compactL.attributedStringValue = s
+
+        let rect = clockRect()
+        clockGlass.frame = rect
+        clockGlass.isHidden = !glassOn
+        clockGlass.setTint(NSColor.white.withAlphaComponent(0.5 * CGFloat(UserDefaults.standard.object(forKey: "lockClockGlassy") as? Double ?? 0.3)))   // 0 = fully clear
+        guard glassOn else { clockGlass.layer?.mask = nil; return }
+        // the glass shows only where the digits are: each visible clock line is drawn white into a mask
+        let cut = CALayer()
+        cut.frame = CGRect(origin: .zero, size: rect.size)
+        for label in media.motionURL != nil ? [timeL, dateL] : [compactL] {
+            let text = NSMutableAttributedString(attributedString: label.attributedStringValue)
+            text.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: 0, length: text.length))
+            let box = text.size()
+            let line = CATextLayer()
+            line.string = text
+            line.alignmentMode = .center
+            line.contentsScale = 2
+            line.frame = CGRect(x: label.frame.minX - rect.minX, y: label.frame.midY - rect.minY - box.height / 2, width: label.frame.width, height: box.height)
+            cut.addSublayer(line)
+        }
+        clockGlass.layer?.mask = cut
     }
+
+    /// Where the clock's text sits: the time and date while a video plays, otherwise the small line at the top.
+    private func clockRect() -> NSRect {
+        let w = bounds.width, h = bounds.height
+        if media.motionURL != nil { return NSRect(x: w * 0.3, y: h * 0.655, width: w * 0.4, height: h * 0.245) }
+        return NSRect(x: w * 0.3, y: h * 0.902 - 18, width: w * 0.4, height: 36)
+    }
+
+    /// A long press on the clock opens the editor. A quick tap, or a click anywhere else, closes fullscreen as before.
+    override func mouseDown(with event: NSEvent) {
+        if editorOpen { hideEditor(); return }   // a click outside the editor closes it first
+        if clockRect().contains(convert(event.locationInWindow, from: nil)) {
+            pressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                self?.pressTimer = nil
+                self?.showEditor()
+            }
+            return
+        }
+        onClick?()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let timer = pressTimer else { return }   // the long press already opened the editor
+        timer.invalidate(); pressTimer = nil
+        onClick?()
+    }
+
+    private func showEditor() {
+        editor.load()
+        editor.isHidden = false
+        editor.fadeIn(to: 1, duration: 0.25)
+        editorOpen = true
+    }
+
+    private func hideEditor() {
+        editor.isHidden = true
+        editorOpen = false
+    }
+}
+
+/// Slider that takes its first click even in a panel that never becomes active (the lock screen one never does).
+private final class FirstMouseSlider: NSSlider {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// Opened by a long press on the clock: a size slider and a Liquid Glass checkbox. It writes the same settings as the Settings window.
+final class ClockEditorView: NSView {
+    var onChange: (() -> Void)?
+    private let glass = GlassBackground(frame: .zero, radius: 22, tint: NSColor.black.withAlphaComponent(0.2), blur: 4)
+    private let size = FirstMouseSlider(value: 1, minValue: 0.6, maxValue: 1.4, target: nil, action: nil)
+    private let glassBox = PressButton()
+    private let amount = FirstMouseSlider(value: 0.3, minValue: 0, maxValue: 1, target: nil, action: nil)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        glass.autoresizingMask = [.width, .height]
+        func caption(_ text: String, y: CGFloat) -> NSTextField {
+            let l = NSTextField(labelWithString: text)
+            l.font = .systemFont(ofSize: 12, weight: .semibold); l.textColor = .white
+            l.frame = NSRect(x: 16, y: y, width: 228, height: 16)
+            return l
+        }
+        size.frame = NSRect(x: 16, y: 98, width: 228, height: 20)
+        size.target = self; size.action = #selector(sizeChanged)
+        glassBox.frame = NSRect(x: 16, y: 66, width: 228, height: 22)
+        amount.frame = NSRect(x: 16, y: 18, width: 228, height: 20)
+        amount.target = self; amount.action = #selector(amountChanged)
+        glassBox.setButtonType(.switch)
+        glassBox.attributedTitle = NSAttributedString(string: "Liquid Glass", attributes: [.foregroundColor: NSColor.white])
+        glassBox.target = self; glassBox.action = #selector(glassChanged)
+        [glass, caption("Clock size", y: 124), size, glassBox, caption("Glass amount (left = clear)", y: 44), amount].forEach(addSubview)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Shows the saved values before the editor appears.
+    func load() {
+        let d = UserDefaults.standard
+        size.doubleValue = d.object(forKey: "lockClockScale") as? Double ?? 1
+        glassBox.state = (d.object(forKey: "lockClockGlass") as? Bool ?? false) ? .on : .off
+        amount.doubleValue = d.object(forKey: "lockClockGlassy") as? Double ?? 0.3
+    }
+    @objc private func amountChanged() { UserDefaults.standard.set(amount.doubleValue, forKey: "lockClockGlassy"); onChange?() }
+
+    @objc private func sizeChanged() { UserDefaults.standard.set(size.doubleValue, forKey: "lockClockScale"); onChange?() }
+    @objc private func glassChanged() { UserDefaults.standard.set(glassBox.state == .on, forKey: "lockClockGlass"); onChange?() }
 }
 
 /// Puts a window into its own top-level space at SkyLight's "lock screen" level, so it stays visible over the lock screen.

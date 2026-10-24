@@ -1,6 +1,7 @@
 import SwiftUI
 import ServiceManagement
 
+/// Four tabs, a few short rows each, an icon on every row. Everything longer lives behind the row's ⓘ.
 struct SettingsView: View {
     @AppStorage("showWaveform") private var showWaveform = true
     @AppStorage("showArtwork") private var showArtwork = true
@@ -24,68 +25,122 @@ struct SettingsView: View {
     @StateObject private var errBox = Local<String?>(nil)
     private var loginError: String? { get { errBox.v } nonmutating set { errBox.v = newValue } }
 
-    /// Every setting has an ⓘ: click it to see what the setting does and a little picture of each choice.
+    @AppStorage("settingsTab") private var tab = 0   // also remembers the last tab you were on
+    private let tabs = [("General", "gearshape"), ("Menu bar", "menubar.rectangle"), ("Lock screen", "lock"), ("Spotify", "dot.radiowaves.left.and.right")]
+
     var body: some View {
+        VStack(spacing: 0) {
+            // our own icon tab bar: the stock macOS TabView draws text-only tabs inside a box
+            HStack(spacing: 6) {
+                ForEach(tabs.indices, id: \.self) { i in
+                    Button { tab = i } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: tabs[i].1).font(.system(size: 19, weight: .regular)).frame(height: 24)
+                            Text(tabs[i].0).font(.caption)
+                        }
+                        .frame(width: 88, height: 52)
+                        .foregroundStyle(tab == i ? Color.accentColor : Color.secondary)
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tab == i ? Color.accentColor.opacity(0.16) : Color.clear))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 8)
+            Divider()
+            Group {
+                switch tab {
+                case 1: menuBar
+                case 2: lockScreen
+                case 3: spotifyTab
+                default: general
+                }
+            }
+        }
+        .frame(width: 440, height: 580)
+    }
+
+    var general: some View {
         Form {
-            Section("General") {
-                Toggle(isOn: $loginBox.v) { InfoLabel("Launch at login", .launchAtLogin) }
+            Section {
+                Toggle(isOn: $loginBox.v) { InfoLabel("Launch at login", .launchAtLogin, icon: "power") }
                     .onChange(of: loginBox.v) { _, on in
                         do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginError = nil }
                         catch { loginError = error.localizedDescription; launchAtLogin = SMAppService.mainApp.status == .enabled }
                     }
                 if let loginError { Text(loginError).font(.caption).foregroundStyle(.red) }
                 Picker(selection: $preferredPlayer) {
-                    Text("Automatic").tag("auto")
+                    Text("Auto").tag("auto")
                     Text("Apple Music").tag("music")
                     Text("Spotify").tag("spotify")
-                } label: { InfoLabel("Player", .player) }
-                Toggle(isOn: $openPopoverOnClick) { InfoLabel("Open the player on click", .popoverClick) }
+                } label: { InfoLabel("Player", .player, icon: "music.note") }
+                Toggle(isOn: $openPopoverOnClick) { InfoLabel("Click opens player", .popoverClick, icon: "cursorarrow.click") }
             }
-            Section("Menu bar") {
-                Toggle(isOn: $showArtwork) { InfoLabel("Album artwork", .artwork) }
-                Toggle(isOn: $showWaveform) { InfoLabel("Animated waveform", .waveform) }
-                Toggle(isOn: $reactiveAudio) { InfoLabel("Waveform follows the music", .reactiveAudio) }.disabled(!showWaveform)
-                Picker(selection: $fallback) {
-                    Text("Music note").tag("icon")
-                    Text("Last album cover").tag("lastArtwork")
-                    Text("Hidden").tag("hidden")
-                } label: { InfoLabel("When nothing is playing", .fallback) }
-            }
-            Section("Lock screen") {
-                Toggle(isOn: $lockScreenPlayer) { InfoLabel("Player on the lock screen", .lockPlayer) }
-                Toggle(isOn: $lockLiquidGlass) { InfoLabel("Liquid Glass card", .glass) }.disabled(!lockScreenPlayer)
-            }
+        }
+        .formStyle(.grouped)
+    }
+
+    var menuBar: some View {
+        Form {
             Section {
-                Toggle(isOn: $showLyricsButton) { InfoLabel("Lyrics button", .lyricsButton) }
-                Toggle(isOn: $tintLyrics) { InfoLabel("Tint lyrics with the song's colour", .tintLyrics) }
-                Toggle(isOn: $showQueueButton) { InfoLabel("Queue button", .queueButton) }
+                Toggle(isOn: $showArtwork) { InfoLabel("Artwork", .artwork, icon: "photo") }
+                Toggle(isOn: $showWaveform) { InfoLabel("Waveform", .waveform, icon: "waveform") }
+                Toggle(isOn: $reactiveAudio) { InfoLabel("Reacts to audio", .reactiveAudio, icon: "speaker.wave.2") }.disabled(!showWaveform)
+                Picker(selection: $fallback) {
+                    Text("Note").tag("icon")
+                    Text("Last cover").tag("lastArtwork")
+                    Text("Hidden").tag("hidden")
+                } label: { InfoLabel("When idle", .fallback, icon: "pause.circle") }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    var lockScreen: some View {
+        Form {
+            Section {
+                Toggle(isOn: $lockScreenPlayer) { InfoLabel("Show player", .lockPlayer, icon: "rectangle.on.rectangle") }
+                Toggle(isOn: $lockLiquidGlass) { InfoLabel("Glass card", .glass, icon: "square.on.square") }.disabled(!lockScreenPlayer)
+            }
+            Section("Full screen") {
+                Toggle(isOn: $showLyricsButton) { InfoLabel("Lyrics", .lyricsButton, icon: "quote.bubble") }
+                Toggle(isOn: $tintLyrics) { InfoLabel("Colour lyrics", .tintLyrics, icon: "paintpalette") }.disabled(!showLyricsButton)
+                Toggle(isOn: $showQueueButton) { InfoLabel("Queue", .queueButton, icon: "list.bullet") }
                 Picker(selection: $lockContrast) {
-                    Text("Automatic").tag("auto")
+                    Text("Auto").tag("auto")
                     Text("High").tag("high")
                     Text("Off").tag("off")
-                } label: { InfoLabel("Contrast", .contrast) }
+                } label: { InfoLabel("Contrast", .contrast, icon: "circle.lefthalf.filled") }
+            }
+            .disabled(!lockScreenPlayer)
+            Section("Clock") {
                 Picker(selection: $lockClockStyle) {
                     Text("Serif").tag("serif")
                     Text("Sans").tag("sans")
                     Text("Rounded").tag("rounded")
                     Text("Mono").tag("mono")
-                    Text("Cooper Black").tag("cooper")
+                    Text("Cooper").tag("cooper")
                     Text("Zapfino").tag("zapfino")
                     Text("Blackmoor").tag("blackmoor")
-                } label: { InfoLabel("Clock style", .clockStyle) }
+                } label: { InfoLabel("Style", .clockStyle, icon: "textformat") }
                 Picker(selection: $lockClockWeight) {
-                    Text("Ultra light").tag("ultralight")
+                    Text("Thin").tag("ultralight")
                     Text("Light").tag("light")
                     Text("Regular").tag("regular")
                     Text("Bold").tag("bold")
-                } label: { InfoLabel("Clock weight", .clockWeight) }
-                Slider(value: $lockClockScale, in: 0.6...1.4) { InfoLabel("Clock size", .clockSize) }
-            } header: {
-                Text("Full-screen lock screen")
-            } footer: {
-                Text("Click the cover on the lock screen card to open it.").font(.caption)
+                } label: { InfoLabel("Weight", .clockWeight, icon: "bold") }
+                .pickerStyle(.segmented)
+                Slider(value: $lockClockScale, in: 0.6...1.4) {
+                    InfoLabel("Size", .clockSize, icon: "textformat.size")
+                } minimumValueLabel: { Text("A").font(.caption) } maximumValueLabel: { Text("A").font(.title3) }
             }
             .disabled(!lockScreenPlayer)
+        }
+        .formStyle(.grouped)
+    }
+
+    var spotifyTab: some View {
+        Form {
             Section {
                 if spotify.connected {
                     HStack {
@@ -94,16 +149,13 @@ struct SettingsView: View {
                         Button("Disconnect") { spotify.disconnect() }
                     }
                 } else {
-                    TextField("Client ID", text: $spotifyClientID)
-                    Button("Connect Spotify") { spotify.connect() }.disabled(spotifyClientID.trimmingCharacters(in: .whitespaces).isEmpty)
+                    TextField(text: $spotifyClientID) { InfoLabel("Client ID", .spotify, icon: "key") }
+                    Button("Connect") { spotify.connect() }.disabled(spotifyClientID.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Link("Get a Client ID", destination: URL(string: "https://developer.spotify.com/dashboard")!)
                 }
                 if !spotify.status.isEmpty { Text(spotify.status).font(.caption).foregroundStyle(.secondary) }
-                Link("Open the Spotify developer dashboard", destination: URL(string: "https://developer.spotify.com/dashboard")!).font(.caption)
-            } header: {
-                HStack(spacing: 6) { Text("Spotify (optional)"); InfoButton(info: .spotify) }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440, height: 720)
     }
 }
